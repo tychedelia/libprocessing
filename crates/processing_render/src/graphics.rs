@@ -5,12 +5,13 @@
 //! configured to render to a specific surface (either a window or an offscreen image).
 use bevy::{
     camera::{
-        CameraMainTextureUsages, CameraOutputMode, CameraProjection, ClearColorConfig,
+        CameraMainTextureUsages, CameraOutputMode, CameraProjection, ClearColorConfig, Exposure,
         ImageRenderTarget, MsaaWriteback, Projection, RenderTarget, visibility::RenderLayers,
     },
     core_pipeline::tonemapping::Tonemapping,
     ecs::{entity::EntityHashMap, query::QueryEntityError},
     math::{Mat4, Vec3A},
+    post_process::bloom::Bloom,
     prelude::*,
     render::{
         Render, RenderSystems,
@@ -29,6 +30,7 @@ use crate::{
     Flush,
     error::{ProcessingError, Result},
     image::{Image, bytes_to_pixels, create_readback_buffer, pixel_size, pixels_to_bytes},
+    material::DefaultMaterial,
     render::{
         RenderState,
         command::{CommandBuffer, DrawCommand},
@@ -186,6 +188,7 @@ pub fn create(
     mut layer_manager: ResMut<RenderLayersManager>,
     p_images: Query<&Image, With<Surface>>,
     render_device: Res<RenderDevice>,
+    default_material: Res<DefaultMaterial>,
 ) -> Result<Entity> {
     // find the surface entity, if it is an image, we will render to that image
     // otherwise we will render to the window
@@ -243,7 +246,7 @@ pub fn create(
             Transform::from_xyz(0.0, 0.0, 999.9),
             render_layer,
             CommandBuffer::new(),
-            RenderState::default(),
+            RenderState::new(default_material.0),
             SurfaceSize(width, height),
             Graphics {
                 readback_buffer,
@@ -453,11 +456,15 @@ pub fn destroy(
     Ok(())
 }
 
-pub fn begin_draw(In(entity): In<Entity>, mut state_query: Query<&mut RenderState>) -> Result<()> {
+pub fn begin_draw(
+    In(entity): In<Entity>,
+    mut state_query: Query<&mut RenderState>,
+    default_material: Res<DefaultMaterial>,
+) -> Result<()> {
     let mut state = state_query
         .get_mut(entity)
         .map_err(|_| ProcessingError::GraphicsNotFound)?;
-    state.reset();
+    state.reset(default_material.0);
     Ok(())
 }
 
@@ -631,6 +638,63 @@ pub fn update_region_write(
         },
     );
 
+    Ok(())
+}
+
+pub fn to_bevy_tonemapping(mode: u32) -> Tonemapping {
+    match mode {
+        1 => Tonemapping::Reinhard,
+        2 => Tonemapping::ReinhardLuminance,
+        3 => Tonemapping::AcesFitted,
+        4 => Tonemapping::AgX,
+        5 => Tonemapping::SomewhatBoringDisplayTransform,
+        6 => Tonemapping::TonyMcMapface,
+        7 => Tonemapping::BlenderFilmic,
+        _ => Tonemapping::None,
+    }
+}
+
+pub fn bloom(
+    In((entity, intensity)): In<(Entity, f32)>,
+    mut commands: Commands,
+    tonemappings: Query<&Tonemapping>,
+) -> Result<()> {
+    let mut bloom = Bloom::NATURAL;
+    bloom.intensity = intensity;
+    let mut entity_commands = commands.entity(entity);
+    entity_commands.insert(bloom);
+    // bloom looks washed out without tonemapping, auto-enable if currently None
+    if let Ok(tm) = tonemappings.get(entity) {
+        if matches!(tm, Tonemapping::None) {
+            entity_commands.insert(Tonemapping::TonyMcMapface);
+        }
+    }
+    Ok(())
+}
+
+pub fn bloom_threshold(
+    In((entity, threshold)): In<(Entity, f32)>,
+    mut blooms: Query<&mut Bloom>,
+) -> Result<()> {
+    let mut bloom = blooms
+        .get_mut(entity)
+        .map_err(|_| ProcessingError::BloomNotEnabled)?;
+    bloom.prefilter.threshold = threshold;
+    Ok(())
+}
+
+pub fn no_bloom(In(entity): In<Entity>, mut commands: Commands) -> Result<()> {
+    commands.entity(entity).remove::<Bloom>();
+    Ok(())
+}
+
+pub fn tonemapping(In((entity, mode)): In<(Entity, u32)>, mut commands: Commands) -> Result<()> {
+    commands.entity(entity).insert(to_bevy_tonemapping(mode));
+    Ok(())
+}
+
+pub fn exposure(In((entity, ev100)): In<(Entity, f32)>, mut commands: Commands) -> Result<()> {
+    commands.entity(entity).insert(Exposure { ev100 });
     Ok(())
 }
 

@@ -28,4 +28,10 @@ pub enum ProcessingError {
     GeometryNotFound,
     #[error("Layout not found")]
     LayoutNotFound,
+    #[error("Material not found")]
+    MaterialNotFound,
+    #[error("Unknown material property: {0}")]
+    UnknownMaterialProperty(String),
+    #[error("Bloom is not enabled on this graphics entity")]
+    BloomNotEnabled,
 }

@@ -264,6 +264,36 @@ impl Graphics {
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
+    pub fn bloom(&self, intensity: f32) -> PyResult<()> {
+        graphics_record_command(self.entity, DrawCommand::Bloom(intensity))
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    }
+
+    pub fn bloom_threshold(&self, threshold: f32) -> PyResult<()> {
+        graphics_record_command(self.entity, DrawCommand::BloomThreshold(threshold))
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    }
+
+    pub fn no_bloom(&self) -> PyResult<()> {
+        graphics_record_command(self.entity, DrawCommand::NoBloom)
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    }
+
+    pub fn tonemapping(&self, mode: u32) -> PyResult<()> {
+        graphics_record_command(self.entity, DrawCommand::Tonemapping(mode))
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    }
+
+    pub fn exposure(&self, ev100: f32) -> PyResult<()> {
+        graphics_record_command(self.entity, DrawCommand::Exposure(ev100))
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    }
+
+    pub fn set_material(&self, material: &crate::material::Material) -> PyResult<()> {
+        graphics_record_command(self.entity, DrawCommand::Material(material.entity))
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    }
+
     pub fn begin_draw(&self) -> PyResult<()> {
         graphics_begin_draw(self.entity).map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }

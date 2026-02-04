@@ -1003,3 +1003,97 @@ pub extern "C" fn processing_geometry_box(width: f32, height: f32, depth: f32) -
         .map(|e| e.to_bits())
         .unwrap_or(0)
 }
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_material_create_pbr() -> u64 {
+    error::clear_error();
+    error::check(|| material_create_pbr())
+        .map(|e| e.to_bits())
+        .unwrap_or(0)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_material_set_float(
+    mat_id: u64,
+    name: *const std::ffi::c_char,
+    value: f32,
+) {
+    error::clear_error();
+    let name = unsafe { std::ffi::CStr::from_ptr(name) }.to_str().unwrap();
+    error::check(|| {
+        material_set(
+            Entity::from_bits(mat_id),
+            name,
+            material::MaterialValue::Float(value),
+        )
+    });
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_material_set_float4(
+    mat_id: u64,
+    name: *const std::ffi::c_char,
+    r: f32,
+    g: f32,
+    b: f32,
+    a: f32,
+) {
+    error::clear_error();
+    let name = unsafe { std::ffi::CStr::from_ptr(name) }.to_str().unwrap();
+    error::check(|| {
+        material_set(
+            Entity::from_bits(mat_id),
+            name,
+            material::MaterialValue::Float4([r, g, b, a]),
+        )
+    });
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_material_destroy(mat_id: u64) {
+    error::clear_error();
+    error::check(|| material_destroy(Entity::from_bits(mat_id)));
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_bloom(window_id: u64, intensity: f32) {
+    error::clear_error();
+    let window_entity = Entity::from_bits(window_id);
+    error::check(|| graphics_record_command(window_entity, DrawCommand::Bloom(intensity)));
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_bloom_threshold(window_id: u64, threshold: f32) {
+    error::clear_error();
+    let window_entity = Entity::from_bits(window_id);
+    error::check(|| graphics_record_command(window_entity, DrawCommand::BloomThreshold(threshold)));
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_no_bloom(window_id: u64) {
+    error::clear_error();
+    let window_entity = Entity::from_bits(window_id);
+    error::check(|| graphics_record_command(window_entity, DrawCommand::NoBloom));
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_tonemapping(window_id: u64, mode: u32) {
+    error::clear_error();
+    let window_entity = Entity::from_bits(window_id);
+    error::check(|| graphics_record_command(window_entity, DrawCommand::Tonemapping(mode)));
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_exposure(window_id: u64, ev100: f32) {
+    error::clear_error();
+    let window_entity = Entity::from_bits(window_id);
+    error::check(|| graphics_record_command(window_entity, DrawCommand::Exposure(ev100)));
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_material(window_id: u64, mat_id: u64) {
+    error::clear_error();
+    let window_entity = Entity::from_bits(window_id);
+    let mat_entity = Entity::from_bits(mat_id);
+    error::check(|| graphics_record_command(window_entity, DrawCommand::Material(mat_entity)));
+}

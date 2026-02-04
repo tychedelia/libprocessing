@@ -37,6 +37,12 @@ pub enum DrawCommand {
         angle: f32,
     },
     Geometry(Entity),
+    Material(Entity),
+    Bloom(f32),
+    BloomThreshold(f32),
+    NoBloom,
+    Tonemapping(u32),
+    Exposure(f32),
 }
 
 #[derive(Debug, Default, Component)]

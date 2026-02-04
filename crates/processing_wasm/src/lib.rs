@@ -4,8 +4,8 @@ use bevy::prelude::Entity;
 use processing_render::{
     config::Config, exit, graphics_begin_draw, graphics_end_draw, graphics_flush,
     graphics_record_command, image_create, image_destroy, image_load, image_readback, image_resize,
-    init, render::command::DrawCommand, surface_create_from_canvas, surface_destroy,
-    surface_resize,
+    init, material, material_create_pbr, material_destroy, material_set,
+    render::command::DrawCommand, surface_create_from_canvas, surface_destroy, surface_resize,
 };
 use wasm_bindgen::prelude::*;
 
@@ -252,4 +252,87 @@ pub fn js_image_readback(image_id: u64) -> Result<Vec<f32>, JsValue> {
 #[wasm_bindgen(js_name = "destroyImage")]
 pub fn js_image_destroy(image_id: u64) -> Result<(), JsValue> {
     check(image_destroy(Entity::from_bits(image_id)))
+}
+
+#[wasm_bindgen(js_name = "materialCreatePbr")]
+pub fn js_material_create_pbr() -> Result<u64, JsValue> {
+    check(material_create_pbr().map(|e| e.to_bits()))
+}
+
+#[wasm_bindgen(js_name = "materialSetFloat")]
+pub fn js_material_set_float(mat_id: u64, name: &str, value: f32) -> Result<(), JsValue> {
+    check(material_set(
+        Entity::from_bits(mat_id),
+        name,
+        material::MaterialValue::Float(value),
+    ))
+}
+
+#[wasm_bindgen(js_name = "materialSetFloat4")]
+pub fn js_material_set_float4(
+    mat_id: u64,
+    name: &str,
+    r: f32,
+    g: f32,
+    b: f32,
+    a: f32,
+) -> Result<(), JsValue> {
+    check(material_set(
+        Entity::from_bits(mat_id),
+        name,
+        material::MaterialValue::Float4([r, g, b, a]),
+    ))
+}
+
+#[wasm_bindgen(js_name = "materialDestroy")]
+pub fn js_material_destroy(mat_id: u64) -> Result<(), JsValue> {
+    check(material_destroy(Entity::from_bits(mat_id)))
+}
+
+#[wasm_bindgen(js_name = "bloom")]
+pub fn js_bloom(surface_id: u64, intensity: f32) -> Result<(), JsValue> {
+    check(graphics_record_command(
+        Entity::from_bits(surface_id),
+        DrawCommand::Bloom(intensity),
+    ))
+}
+
+#[wasm_bindgen(js_name = "bloomThreshold")]
+pub fn js_bloom_threshold(surface_id: u64, threshold: f32) -> Result<(), JsValue> {
+    check(graphics_record_command(
+        Entity::from_bits(surface_id),
+        DrawCommand::BloomThreshold(threshold),
+    ))
+}
+
+#[wasm_bindgen(js_name = "noBloom")]
+pub fn js_no_bloom(surface_id: u64) -> Result<(), JsValue> {
+    check(graphics_record_command(
+        Entity::from_bits(surface_id),
+        DrawCommand::NoBloom,
+    ))
+}
+
+#[wasm_bindgen(js_name = "tonemapping")]
+pub fn js_tonemapping(surface_id: u64, mode: u32) -> Result<(), JsValue> {
+    check(graphics_record_command(
+        Entity::from_bits(surface_id),
+        DrawCommand::Tonemapping(mode),
+    ))
+}
+
+#[wasm_bindgen(js_name = "exposure")]
+pub fn js_exposure(surface_id: u64, ev100: f32) -> Result<(), JsValue> {
+    check(graphics_record_command(
+        Entity::from_bits(surface_id),
+        DrawCommand::Exposure(ev100),
+    ))
+}
+
+#[wasm_bindgen(js_name = "material")]
+pub fn js_material(surface_id: u64, mat_id: u64) -> Result<(), JsValue> {
+    check(graphics_record_command(
+        Entity::from_bits(surface_id),
+        DrawCommand::Material(Entity::from_bits(mat_id)),
+    ))
 }

@@ -3,6 +3,7 @@ pub mod error;
 pub mod geometry;
 mod graphics;
 pub mod image;
+pub mod material;
 pub mod render;
 mod surface;
 
@@ -247,6 +248,7 @@ fn create_app(config: Config) -> App {
         GraphicsPlugin,
         SurfacePlugin,
         geometry::GeometryPlugin,
+        material::MaterialPlugin,
     ));
     app.add_systems(First, (clear_transient_meshes, activate_cameras))
         .add_systems(Update, flush_draw_commands.before(AssetEventSystems));
@@ -454,6 +456,46 @@ fn setup_tracing() -> error::Result<()> {
         tracing::subscriber::set_global_default(subscriber)?;
     }
     Ok(())
+}
+
+pub fn graphics_bloom(graphics_entity: Entity, intensity: f32) -> error::Result<()> {
+    app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(graphics::bloom, (graphics_entity, intensity))
+            .unwrap()
+    })
+}
+
+pub fn graphics_bloom_threshold(graphics_entity: Entity, threshold: f32) -> error::Result<()> {
+    app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(graphics::bloom_threshold, (graphics_entity, threshold))
+            .unwrap()
+    })
+}
+
+pub fn graphics_no_bloom(graphics_entity: Entity) -> error::Result<()> {
+    app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(graphics::no_bloom, graphics_entity)
+            .unwrap()
+    })
+}
+
+pub fn graphics_tonemapping(graphics_entity: Entity, mode: u32) -> error::Result<()> {
+    app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(graphics::tonemapping, (graphics_entity, mode))
+            .unwrap()
+    })
+}
+
+pub fn graphics_exposure(graphics_entity: Entity, ev100: f32) -> error::Result<()> {
+    app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(graphics::exposure, (graphics_entity, ev100))
+            .unwrap()
+    })
 }
 
 /// Record a drawing command for a window
@@ -1069,5 +1111,34 @@ pub fn geometry_box(width: f32, height: f32, depth: f32) -> error::Result<Entity
             .world_mut()
             .run_system_cached_with(geometry::create_box, (width, height, depth))
             .unwrap())
+    })
+}
+
+pub fn material_create_pbr() -> error::Result<Entity> {
+    app_mut(|app| {
+        Ok(app
+            .world_mut()
+            .run_system_cached(material::create_pbr)
+            .unwrap())
+    })
+}
+
+pub fn material_set(
+    entity: Entity,
+    name: impl Into<String>,
+    value: material::MaterialValue,
+) -> error::Result<()> {
+    app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(material::set_property, (entity, name.into(), value))
+            .unwrap()
+    })
+}
+
+pub fn material_destroy(entity: Entity) -> error::Result<()> {
+    app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(material::destroy, entity)
+            .unwrap()
     })
 }

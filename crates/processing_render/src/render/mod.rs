@@ -5,9 +5,11 @@ pub mod primitive;
 pub mod transform;
 
 use bevy::{
-    camera::visibility::RenderLayers,
+    camera::{Exposure, visibility::RenderLayers},
+    core_pipeline::tonemapping::Tonemapping,
     ecs::system::SystemParam,
     math::{Affine3A, Mat4, Vec4},
+    post_process::bloom::Bloom,
     prelude::*,
 };
 use command::{CommandBuffer, DrawCommand};
@@ -15,7 +17,13 @@ use material::MaterialKey;
 use primitive::{TessellationMode, empty_mesh};
 use transform::TransformStack;
 
-use crate::{Flush, geometry::Geometry, image::Image, render::primitive::rect};
+use crate::{
+    Flush,
+    geometry::Geometry,
+    image::Image,
+    material::{ProcessingMaterial, resolve_standard_material_handle},
+    render::primitive::rect,
+};
 
 #[derive(Component)]
 #[relationship(relationship_target = TransientMeshes)]
@@ -35,6 +43,7 @@ pub struct RenderResources<'w, 's> {
 struct BatchState {
     current_mesh: Option<Mesh>,
     material_key: Option<MaterialKey>,
+    active_material: Entity,
     transform: Affine3A,
     draw_index: u32,
     render_layers: RenderLayers,
@@ -42,10 +51,11 @@ struct BatchState {
 }
 
 impl BatchState {
-    fn new(graphics_entity: Entity, render_layers: RenderLayers) -> Self {
+    fn new(graphics_entity: Entity, render_layers: RenderLayers, active_material: Entity) -> Self {
         Self {
             current_mesh: None,
             material_key: None,
+            active_material,
             transform: Affine3A::IDENTITY,
             draw_index: 0,
             render_layers,
@@ -60,22 +70,26 @@ pub struct RenderState {
     pub stroke_color: Option<Color>,
     pub stroke_weight: f32,
     pub transform: TransformStack,
+    pub active_material: Entity,
 }
 
-impl Default for RenderState {
-    fn default() -> Self {
+impl RenderState {
+    pub fn new(default_material: Entity) -> Self {
         Self {
             fill_color: Some(Color::WHITE),
             stroke_color: Some(Color::BLACK),
             stroke_weight: 1.0,
             transform: TransformStack::new(),
+            active_material: default_material,
         }
     }
-}
 
-impl RenderState {
-    pub fn reset(&mut self) {
-        *self = Self::default();
+    pub fn reset(&mut self, default_material: Entity) {
+        self.fill_color = Some(Color::WHITE);
+        self.stroke_color = Some(Color::BLACK);
+        self.stroke_weight = 1.0;
+        self.transform = TransformStack::new();
+        self.active_material = default_material;
     }
 
     pub fn fill_is_transparent(&self) -> bool {
@@ -97,20 +111,33 @@ pub fn flush_draw_commands(
             &RenderLayers,
             &Projection,
             &Transform,
+            Option<&Tonemapping>,
         ),
         With<Flush>,
     >,
     p_images: Query<&Image>,
     p_geometries: Query<&Geometry>,
+    p_materials: Query<&ProcessingMaterial>,
 ) {
-    for (graphics_entity, mut cmd_buffer, mut state, render_layers, projection, camera_transform) in
-        graphics.iter_mut()
+    for (
+        graphics_entity,
+        mut cmd_buffer,
+        mut state,
+        render_layers,
+        projection,
+        camera_transform,
+        current_tonemapping,
+    ) in graphics.iter_mut()
     {
         let clip_from_view = projection.get_clip_from_view();
         let view_from_world = camera_transform.to_matrix().inverse();
         let world_from_clip = (clip_from_view * view_from_world).inverse();
         let draw_commands = std::mem::take(&mut cmd_buffer.commands);
-        let mut batch = BatchState::new(graphics_entity, render_layers.clone());
+        let mut batch = BatchState::new(
+            graphics_entity,
+            render_layers.clone(),
+            state.active_material,
+        );
 
         for cmd in draw_commands {
             match cmd {
@@ -212,14 +239,9 @@ pub fn flush_draw_commands(
 
                     flush_batch(&mut res, &mut batch);
 
-                    // TODO: Implement state based material API
-                    // https://github.com/processing/libprocessing/issues/10
-                    let material_key = MaterialKey {
-                        transparent: false, // TODO: detect from geometry colors
-                        background_image: None,
-                    };
+                    let material_handle =
+                        resolve_material_handle(&p_materials, &mut res, batch.active_material);
 
-                    let material_handle = res.materials.add(material_key.to_material());
                     let z_offset = -(batch.draw_index as f32 * 0.001);
 
                     let mut transform = state.transform.to_bevy_transform();
@@ -234,6 +256,41 @@ pub fn flush_draw_commands(
                     ));
 
                     batch.draw_index += 1;
+                }
+                DrawCommand::Material(entity) => {
+                    state.active_material = entity;
+                    batch.active_material = entity;
+                    flush_batch(&mut res, &mut batch);
+                }
+                DrawCommand::Bloom(intensity) => {
+                    let mut bloom = Bloom::NATURAL;
+                    bloom.intensity = intensity;
+                    res.commands.entity(graphics_entity).insert(bloom);
+                    if current_tonemapping.is_none()
+                        || matches!(current_tonemapping, Some(Tonemapping::None))
+                    {
+                        res.commands
+                            .entity(graphics_entity)
+                            .insert(Tonemapping::TonyMcMapface);
+                    }
+                }
+                DrawCommand::BloomThreshold(threshold) => {
+                    let mut bloom = Bloom::NATURAL;
+                    bloom.prefilter.threshold = threshold;
+                    res.commands.entity(graphics_entity).insert(bloom);
+                }
+                DrawCommand::NoBloom => {
+                    res.commands.entity(graphics_entity).remove::<Bloom>();
+                }
+                DrawCommand::Tonemapping(mode) => {
+                    res.commands
+                        .entity(graphics_entity)
+                        .insert(crate::graphics::to_bevy_tonemapping(mode));
+                }
+                DrawCommand::Exposure(ev100) => {
+                    res.commands
+                        .entity(graphics_entity)
+                        .insert(Exposure { ev100 });
                 }
             }
         }
@@ -347,6 +404,27 @@ fn add_stroke(
     if let Some(ref mut mesh) = batch.current_mesh {
         tessellate(mesh, color, stroke_weight);
     }
+}
+
+/// Resolve a material entity to a StandardMaterial handle.
+/// If the entity has a ProcessingMaterial component, use its handle.
+/// Otherwise, fall back to a default unlit MaterialKey.
+fn resolve_material_handle(
+    p_materials: &Query<&ProcessingMaterial>,
+    res: &mut RenderResources,
+    material_entity: Entity,
+) -> Handle<StandardMaterial> {
+    if let Some(processing_mat) = p_materials.get(material_entity).ok() {
+        if let Some(handle) = resolve_standard_material_handle(processing_mat) {
+            return handle;
+        }
+    }
+    // Fallback: create a default unlit material
+    let material_key = MaterialKey {
+        transparent: false,
+        background_image: None,
+    };
+    res.materials.add(material_key.to_material())
 }
 
 fn flush_batch(res: &mut RenderResources, batch: &mut BatchState) {
