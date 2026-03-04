@@ -371,7 +371,7 @@ fn push_matrix(module: &Bound<'_, PyModule>) -> PyResult<()> {
 #[pyfunction]
 #[pyo3(pass_module)]
 fn pop_matrix(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    graphics!(module).push_matrix()
+    graphics!(module).pop_matrix()
 }
 
 #[pyfunction]

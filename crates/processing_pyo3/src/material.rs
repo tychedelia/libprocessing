@@ -44,7 +44,7 @@ impl Material {
         kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Self> {
         let entity = if vertex.is_some() || fragment.is_some() {
-            material_create_from_shaders(
+            material_create_custom(
                 vertex.map(|s| s.entity),
                 fragment.map(|s| s.entity),
             )

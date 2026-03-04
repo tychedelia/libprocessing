@@ -40,6 +40,8 @@ use bevy::{
 
 use bevy_naga_reflect::dynamic_shader::DynamicShader;
 
+use bevy::shader::Shader as ShaderAsset;
+
 use crate::error::{ProcessingError, Result};
 use crate::material::MaterialValue;
 use crate::render::material::UntypedMaterial;
@@ -47,15 +49,14 @@ use crate::render::material::UntypedMaterial;
 #[derive(Asset, TypePath, Clone)]
 pub struct CustomMaterial {
     pub shader: DynamicShader,
-    pub vertex_shader: Option<Handle<Shader>>,
-    pub fragment_shader: Option<Handle<Shader>>,
+    pub vertex_shader: Option<Handle<ShaderAsset>>,
+    pub fragment_shader: Option<Handle<ShaderAsset>>,
 }
 
-/// A compiled shader program that can be used to create multiple material instances.
 #[derive(Component)]
-pub struct ShaderProgram {
+pub struct Shader {
     pub module: naga::Module,
-    pub shader_handle: Handle<Shader>,
+    pub shader_handle: Handle<ShaderAsset>,
 }
 
 #[derive(Component, Clone)]
@@ -136,71 +137,30 @@ fn detect_stages(module: &naga::Module) -> (bool, bool) {
     (has_vertex, has_fragment)
 }
 
-/// Create a custom material from WGSL/WESL shader source (convenience: compile + create in one step).
-pub fn create_custom(
-    In(source): In<String>,
-    mut commands: Commands,
-    mut shaders: ResMut<Assets<Shader>>,
-    mut custom_materials: ResMut<Assets<CustomMaterial>>,
-) -> Result<Entity> {
-    let (compiled_wgsl, module) = compile_shader(&source)?;
-    let (has_vertex, has_fragment) = detect_stages(&module);
-
-    let mut shader = DynamicShader::new(module)
-        .map_err(|e| ProcessingError::ShaderCompilationError(format!("{e}")))?;
-    shader.init();
-
-    let shader_handle = shaders.add(Shader::from_wgsl(compiled_wgsl, "custom_material"));
-
-    let material = CustomMaterial {
-        shader,
-        vertex_shader: if has_vertex {
-            Some(shader_handle.clone())
-        } else {
-            None
-        },
-        fragment_shader: if has_fragment {
-            Some(shader_handle)
-        } else {
-            None
-        },
-    };
-    let handle = custom_materials.add(material);
-    let entity = commands.spawn(UntypedMaterial(handle.untyped())).id();
-    Ok(entity)
-}
-
-/// Compile WGSL source and spawn an entity with ShaderProgram.
 pub fn create_shader(
     In(source): In<String>,
     mut commands: Commands,
-    mut shaders: ResMut<Assets<Shader>>,
+    mut shaders: ResMut<Assets<ShaderAsset>>,
 ) -> Result<Entity> {
     let (compiled_wgsl, module) = compile_shader(&source)?;
-    let shader_handle = shaders.add(Shader::from_wgsl(compiled_wgsl, "custom_material"));
+    let shader_handle = shaders.add(ShaderAsset::from_wgsl(compiled_wgsl, "custom_material"));
     Ok(commands
-        .spawn(ShaderProgram {
+        .spawn(Shader {
             module,
             shader_handle,
         })
         .id())
 }
 
-/// Destroy a shader program entity.
 pub fn destroy_shader(In(entity): In<Entity>, mut commands: Commands) -> Result<()> {
     commands.entity(entity).despawn();
     Ok(())
 }
 
-/// Create a CustomMaterial from separate vertex and fragment ShaderPrograms.
-///
-/// At least one of `vertex` or `fragment` must be `Some`. The `DynamicShader`
-/// (uniform storage) is built from whichever module contains `@group(4)` bindings
-/// (fragment preferred, falls back to vertex).
-pub fn create_from_shaders(
+pub fn create_custom(
     In((vertex_entity, fragment_entity)): In<(Option<Entity>, Option<Entity>)>,
     mut commands: Commands,
-    shader_programs: Query<&ShaderProgram>,
+    shader_programs: Query<&Shader>,
     mut custom_materials: ResMut<Assets<CustomMaterial>>,
 ) -> Result<Entity> {
     let vertex_program = vertex_entity
@@ -212,15 +172,14 @@ pub fn create_from_shaders(
         .transpose()
         .map_err(|_| ProcessingError::ShaderNotFound)?;
 
-    // Build DynamicShader from the module that provides @group(4) bindings.
-    // Prefer fragment, fall back to vertex.
+    // Prefer fragment module for reflection, fall back to vertex.
     let reflection_module = fragment_program
         .map(|p| &p.module)
         .or(vertex_program.map(|p| &p.module))
         .ok_or(ProcessingError::ShaderNotFound)?;
 
     let mut shader = DynamicShader::new(reflection_module.clone())
-        .map_err(|e| ProcessingError::ShaderCompilationError(format!("{e}")))?;
+        .map_err(|e| ProcessingError::ShaderCompilationError(e.to_string()))?;
     shader.init();
 
     let material = CustomMaterial {
@@ -232,20 +191,14 @@ pub fn create_from_shaders(
     Ok(commands.spawn(UntypedMaterial(handle.untyped())).id())
 }
 
-/// Set a property on a custom material by field name.
-///
-/// Supports top-level parameters (e.g. the uniform var name) and automatic
-/// search into struct fields (e.g. "color" found inside a uniform struct).
 pub fn set_property(material: &mut CustomMaterial, name: &str, value: &MaterialValue) -> Result<()> {
     let reflect_value: Box<dyn PartialReflect> = material_value_to_reflect(value)?;
 
-    // Try top-level parameter first
     if let Some(field) = material.shader.field_mut(name) {
         field.apply(&*reflect_value);
         return Ok(());
     }
 
-    // Search struct parameters for a matching nested field
     let param_name = find_param_containing_field(&material.shader, name);
     if let Some(param_name) = param_name {
         if let Some(param) = material.shader.field_mut(&param_name) {
@@ -281,7 +234,6 @@ fn material_value_to_reflect(value: &MaterialValue) -> Result<Box<dyn PartialRef
     })
 }
 
-/// Find which top-level parameter (struct) contains a field with the given name.
 fn find_param_containing_field(shader: &DynamicShader, field_name: &str) -> Option<String> {
     for i in 0..shader.field_len() {
         if let Some(field) = shader.field_at(i) {
@@ -294,10 +246,6 @@ fn find_param_containing_field(shader: &DynamicShader, field_name: &str) -> Opti
     }
     None
 }
-
-// ---------------------------------------------------------------------------
-// Plugin
-// ---------------------------------------------------------------------------
 
 pub struct CustomMaterialPlugin;
 
@@ -330,16 +278,10 @@ impl Plugin for CustomMaterialPlugin {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Render-world init
-// ---------------------------------------------------------------------------
-
 fn init_custom_material_resources(
     mut bind_group_allocators: ResMut<MaterialBindGroupAllocators>,
     render_device: Res<RenderDevice>,
 ) {
-    // Minimal placeholder layout — actual layouts are provided per-allocation
-    // via allocate_unprepared in non-bindless mode.
     let bind_group_layout = BindGroupLayoutDescriptor::new("custom_material_layout", &[]);
 
     bind_group_allocators.insert(
@@ -353,10 +295,6 @@ fn init_custom_material_resources(
         ),
     );
 }
-
-// ---------------------------------------------------------------------------
-// ErasedRenderAsset
-// ---------------------------------------------------------------------------
 
 impl ErasedRenderAsset for CustomMaterial {
     type SourceAsset = CustomMaterial;
@@ -384,12 +322,10 @@ impl ErasedRenderAsset for CustomMaterial {
     ) -> std::result::Result<Self::ErasedAsset, PrepareAssetError<Self::SourceAsset>> {
         let reflection = source_asset.shader.reflection();
 
-        // Build bind group layout from shader reflection (group 3 = material bind group index)
         let layout_entries = reflection.bind_group_layout(3);
         let bind_group_layout =
             BindGroupLayoutDescriptor::new("custom_material_bind_group", &layout_entries);
 
-        // Create GPU bindings from the DynamicShader's current parameter values
         let bindings = reflection.create_bindings(3, &source_asset.shader, render_device, gpu_images);
 
         let unprepared = UnpreparedBindGroup {
@@ -400,7 +336,6 @@ impl ErasedRenderAsset for CustomMaterial {
             .get_mut(&TypeId::of::<CustomMaterial>())
             .unwrap();
 
-        // Register binding in RenderMaterialBindings so the draw function can find it
         let binding = match render_material_bindings.entry(asset_id.into()) {
             Entry::Occupied(mut occupied_entry) => {
                 bind_group_allocator.free(*occupied_entry.get());
@@ -413,7 +348,6 @@ impl ErasedRenderAsset for CustomMaterial {
                 .insert(bind_group_allocator.allocate_unprepared(unprepared, &bind_group_layout)),
         };
 
-        // Draw function
         let draw_function = opaque_draw_functions
             .read()
             .id::<DrawMaterial>();
@@ -438,10 +372,6 @@ impl ErasedRenderAsset for CustomMaterial {
         })
     }
 }
-
-// ---------------------------------------------------------------------------
-// Extract systems
-// ---------------------------------------------------------------------------
 
 fn extract_custom_materials(
     mut material_instances: ResMut<RenderMaterialInstances>,
@@ -492,10 +422,6 @@ fn extract_custom_materials_that_need_specializations_removed(
             .insert(MainEntity::from(*entity));
     }
 }
-
-// ---------------------------------------------------------------------------
-// Specialization tracking (main world)
-// ---------------------------------------------------------------------------
 
 fn check_entities_needing_specialization(
     needs_specialization: Query<

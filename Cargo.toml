@@ -90,8 +90,8 @@ name = "gltf_load"
 path = "examples/gltf_load.rs"
 
 [[example]]
-name = "custom_shader"
-path = "examples/custom_shader.rs"
+name = "custom_material"
+path = "examples/custom_material.rs"
 
 [profile.wasm-release]
 inherits = "release"

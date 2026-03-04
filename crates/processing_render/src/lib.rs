@@ -1327,21 +1327,13 @@ pub fn shader_destroy(entity: Entity) -> error::Result<()> {
     })
 }
 
-pub fn material_create_from_shaders(
+pub fn material_create_custom(
     vertex: Option<Entity>,
     fragment: Option<Entity>,
 ) -> error::Result<Entity> {
     app_mut(|app| {
         app.world_mut()
-            .run_system_cached_with(material::custom::create_from_shaders, (vertex, fragment))
-            .unwrap()
-    })
-}
-
-pub fn material_create_custom(shader_source: &str) -> error::Result<Entity> {
-    app_mut(|app| {
-        app.world_mut()
-            .run_system_cached_with(material::custom::create_custom, shader_source.to_string())
+            .run_system_cached_with(material::custom::create_custom, (vertex, fragment))
             .unwrap()
     })
 }
