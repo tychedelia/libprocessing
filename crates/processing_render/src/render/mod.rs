@@ -539,6 +539,9 @@ fn add_shape3d(res: &mut RenderResources, batch: &mut BatchState, state: &Render
     let mesh_handle = res.meshes.add(mesh);
     let fill_color = state.fill_color.unwrap_or(Color::WHITE);
     let material_handle = match &state.material_key {
+        // TODO: in 2d, we use vertex colors. `to_material` becomes complicated if we also encode
+        // a base color in the material, so for simplicity we just create a new material here
+        // that is unlit and uses the fill color as the base color
         MaterialKey::Color { transparent, .. } => {
             let mat = StandardMaterial {
                 base_color: fill_color,
