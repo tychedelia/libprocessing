@@ -16,6 +16,6 @@ def draw():
     background(12, 12, 18)
 
     use_material(mat)
-    draw_box(80.0, 80.0, 80.0)
+    box(80.0, 80.0, 80.0)
 
 run()
