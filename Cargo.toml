@@ -22,7 +22,7 @@ too_many_arguments = "allow"
 
 [workspace.dependencies]
 bevy = { git = "https://github.com/bevyengine/bevy", branch = "main", features = ["file_watcher", "shader_format_wesl"] }
-bevy_naga_reflect = { path = "../../tychedelia/bevy_naga_reflect" }
+bevy_naga_reflect = { git = "https://github.com/tychedelia/bevy_naga_reflect" }
 naga = { version = "28", features = ["wgsl-in"] }
 wesl = { version = "0.3", default-features = false }
 processing = { path = "." }

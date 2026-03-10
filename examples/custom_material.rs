@@ -35,7 +35,11 @@ fn sketch() -> error::Result<()> {
         .map_err(|e| error::ProcessingError::ShaderCompilationError(e.to_string()))?;
     let frag = shader_create(&frag_source)?;
     let mat = material_create_custom(None, Some(frag))?;
-    material_set(mat, "color", material::MaterialValue::Float4([1.0, 0.2, 0.4, 1.0]))?;
+    material_set(
+        mat,
+        "color",
+        material::MaterialValue::Float4([1.0, 0.2, 0.4, 1.0]),
+    )?;
 
     let mut angle = 0.0;
 

@@ -16,16 +16,16 @@ pub(crate) mod shader;
 
 use graphics::{Geometry, Graphics, Image, Light, Topology, get_graphics, get_graphics_mut};
 use material::Material;
-use shader::Shader;
 use pyo3::{
     exceptions::PyRuntimeError,
     prelude::*,
     types::{PyDict, PyTuple},
 };
+use shader::Shader;
 use std::ffi::{CStr, CString};
 
-use gltf::Gltf;
 use bevy::log::warn;
+use gltf::Gltf;
 use std::env;
 
 /// Get a shared ref to the Graphics context, or return Ok(()) if not yet initialized.

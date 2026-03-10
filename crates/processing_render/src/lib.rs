@@ -287,7 +287,11 @@ fn create_app(config: Config) -> App {
     app.add_systems(First, (clear_transient_meshes, activate_cameras))
         .add_systems(
             Update,
-            (flush_draw_commands, add_standard_materials, add_custom_materials)
+            (
+                flush_draw_commands,
+                add_standard_materials,
+                add_custom_materials,
+            )
                 .chain()
                 .before(AssetEventSystems),
         );
@@ -1314,8 +1318,9 @@ pub fn shader_create(source: &str) -> error::Result<Entity> {
 
 /// Load a shader from a file path.
 pub fn shader_load(path: &str) -> error::Result<Entity> {
-    let source = std::fs::read_to_string(path)
-        .map_err(|e| error::ProcessingError::ShaderCompilationError(format!("Failed to read {path}: {e}")))?;
+    let source = std::fs::read_to_string(path).map_err(|e| {
+        error::ProcessingError::ShaderCompilationError(format!("Failed to read {path}: {e}"))
+    })?;
     shader_create(&source)
 }
 

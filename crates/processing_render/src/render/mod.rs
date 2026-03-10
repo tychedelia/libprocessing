@@ -223,22 +223,32 @@ pub fn flush_draw_commands(
                     };
                 }
                 DrawCommand::Rect { x, y, w, h, radii } => {
-                    add_fill(&mut res, &mut batch, &state, |mesh, color| {
-                        rect(mesh, x, y, w, h, radii, color, TessellationMode::Fill)
-                    }, &p_material_handles);
+                    add_fill(
+                        &mut res,
+                        &mut batch,
+                        &state,
+                        |mesh, color| rect(mesh, x, y, w, h, radii, color, TessellationMode::Fill),
+                        &p_material_handles,
+                    );
 
-                    add_stroke(&mut res, &mut batch, &state, |mesh, color, weight| {
-                        rect(
-                            mesh,
-                            x,
-                            y,
-                            w,
-                            h,
-                            radii,
-                            color,
-                            TessellationMode::Stroke(weight),
-                        )
-                    }, &p_material_handles);
+                    add_stroke(
+                        &mut res,
+                        &mut batch,
+                        &state,
+                        |mesh, color, weight| {
+                            rect(
+                                mesh,
+                                x,
+                                y,
+                                w,
+                                h,
+                                radii,
+                                color,
+                                TessellationMode::Stroke(weight),
+                            )
+                        },
+                        &p_material_handles,
+                    );
                 }
                 DrawCommand::BackgroundColor(color) => {
                     flush_batch(&mut res, &mut batch, &p_material_handles);
@@ -347,7 +357,13 @@ pub fn flush_draw_commands(
                     height,
                     depth,
                 } => {
-                    add_shape3d(&mut res, &mut batch, &state, box_mesh(width, height, depth), &p_material_handles);
+                    add_shape3d(
+                        &mut res,
+                        &mut batch,
+                        &state,
+                        box_mesh(width, height, depth),
+                        &p_material_handles,
+                    );
                 }
                 DrawCommand::Sphere {
                     radius,

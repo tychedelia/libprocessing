@@ -11,15 +11,13 @@ pub struct Shader {
 impl Shader {
     #[new]
     pub fn new(source: &str) -> PyResult<Self> {
-        let entity =
-            shader_create(source).map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        let entity = shader_create(source).map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
         Ok(Self { entity })
     }
 
     #[staticmethod]
     pub fn load(path: &str) -> PyResult<Self> {
-        let entity =
-            shader_load(path).map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        let entity = shader_load(path).map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
         Ok(Self { entity })
     }
 }

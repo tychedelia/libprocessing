@@ -1,6 +1,6 @@
 // packages wesl libraries for processing and lygia
 // note that bevy does not (as of yet) understand how to use these packages
-// they are, instead, used by us as part of shader pre-processing in the 
+// they are, instead, used by us as part of shader pre-processing in the
 // processing_render crate
 fn main() {
     wesl::PkgBuilder::new("processing")

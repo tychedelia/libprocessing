@@ -3,8 +3,8 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use bevy::platform::collections::hash_map::Entry;
-use wesl::syntax::{ModulePath, PathOrigin};
 use wesl::PkgResolver;
+use wesl::syntax::{ModulePath, PathOrigin};
 
 wesl::wesl_pkg!(processing);
 wesl::wesl_pkg!(lygia);
@@ -13,19 +13,20 @@ use bevy::{
     asset::{AsAssetId, AssetEventSystems},
     core_pipeline::core_3d::Opaque3d,
     ecs::system::{
-        lifetimeless::{SRes, SResMut},
         SystemParamItem,
+        lifetimeless::{SRes, SResMut},
     },
-    material::{key::ErasedMeshPipelineKey, MaterialProperties},
+    material::{MaterialProperties, key::ErasedMeshPipelineKey},
     pbr::{
-        base_specialize, DrawMaterial, EntitiesNeedingSpecialization, MainPassOpaqueDrawFunction,
+        DrawMaterial, EntitiesNeedingSpecialization, MainPassOpaqueDrawFunction,
         MaterialBindGroupAllocator, MaterialBindGroupAllocators, MaterialFragmentShader,
-        MaterialVertexShader, MeshPipelineKey, PreparedMaterial, RenderMaterialBindings, RenderMaterialInstance,
-        RenderMaterialInstances,
+        MaterialVertexShader, MeshPipelineKey, PreparedMaterial, RenderMaterialBindings,
+        RenderMaterialInstance, RenderMaterialInstances, base_specialize,
     },
     prelude::*,
-    reflect::{structs::Struct, PartialReflect, ReflectMut, ReflectRef},
+    reflect::{PartialReflect, ReflectMut, ReflectRef, structs::Struct},
     render::{
+        Extract, RenderApp, RenderStartup,
         camera::{DirtySpecializationSystems, DirtySpecializations},
         erased_render_asset::{ErasedRenderAsset, ErasedRenderAssetPlugin, PrepareAssetError},
         render_asset::RenderAssets,
@@ -34,7 +35,6 @@ use bevy::{
         renderer::RenderDevice,
         sync_world::MainEntity,
         texture::GpuImage,
-        Extract, RenderApp, RenderStartup,
     },
 };
 
@@ -191,7 +191,11 @@ pub fn create_custom(
     Ok(commands.spawn(UntypedMaterial(handle.untyped())).id())
 }
 
-pub fn set_property(material: &mut CustomMaterial, name: &str, value: &MaterialValue) -> Result<()> {
+pub fn set_property(
+    material: &mut CustomMaterial,
+    name: &str,
+    value: &MaterialValue,
+) -> Result<()> {
     let reflect_value: Box<dyn PartialReflect> = material_value_to_reflect(value)?;
 
     if let Some(field) = material.shader.field_mut(name) {
@@ -229,7 +233,7 @@ fn material_value_to_reflect(value: &MaterialValue) -> Result<Box<dyn PartialRef
         MaterialValue::Texture(_) => {
             return Err(ProcessingError::UnknownMaterialProperty(
                 "Texture properties not yet supported for custom materials".to_string(),
-            ))
+            ));
         }
     })
 }
@@ -326,7 +330,8 @@ impl ErasedRenderAsset for CustomMaterial {
         let bind_group_layout =
             BindGroupLayoutDescriptor::new("custom_material_bind_group", &layout_entries);
 
-        let bindings = reflection.create_bindings(3, &source_asset.shader, render_device, gpu_images);
+        let bindings =
+            reflection.create_bindings(3, &source_asset.shader, render_device, gpu_images);
 
         let unprepared = UnpreparedBindGroup {
             bindings: BindingResources(bindings),
@@ -348,9 +353,7 @@ impl ErasedRenderAsset for CustomMaterial {
                 .insert(bind_group_allocator.allocate_unprepared(unprepared, &bind_group_layout)),
         };
 
-        let draw_function = opaque_draw_functions
-            .read()
-            .id::<DrawMaterial>();
+        let draw_function = opaque_draw_functions.read().id::<DrawMaterial>();
 
         let mut properties = MaterialProperties {
             mesh_pipeline_key_bits: ErasedMeshPipelineKey::new(MeshPipelineKey::empty()),
@@ -406,9 +409,7 @@ fn extract_custom_materials_needing_specialization(
     mut dirty: ResMut<DirtySpecializations>,
 ) {
     for entity in entities.changed.iter() {
-        dirty
-            .changed_renderables
-            .insert(MainEntity::from(*entity));
+        dirty.changed_renderables.insert(MainEntity::from(*entity));
     }
 }
 
@@ -417,9 +418,7 @@ fn extract_custom_materials_that_need_specializations_removed(
     mut dirty: ResMut<DirtySpecializations>,
 ) {
     for entity in entities.removed.iter() {
-        dirty
-            .removed_renderables
-            .insert(MainEntity::from(*entity));
+        dirty.removed_renderables.insert(MainEntity::from(*entity));
     }
 }
 

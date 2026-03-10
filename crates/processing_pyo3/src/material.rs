@@ -1,7 +1,7 @@
 use bevy::prelude::Entity;
 use processing::prelude::*;
-use pyo3::{exceptions::PyRuntimeError, prelude::*};
 use pyo3::types::PyDict;
+use pyo3::{exceptions::PyRuntimeError, prelude::*};
 
 use crate::shader::Shader;
 
@@ -44,11 +44,8 @@ impl Material {
         kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Self> {
         let entity = if vertex.is_some() || fragment.is_some() {
-            material_create_custom(
-                vertex.map(|s| s.entity),
-                fragment.map(|s| s.entity),
-            )
-            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?
+            material_create_custom(vertex.map(|s| s.entity), fragment.map(|s| s.entity))
+                .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?
         } else {
             material_create_pbr().map_err(|e| PyRuntimeError::new_err(format!("{e}")))?
         };
