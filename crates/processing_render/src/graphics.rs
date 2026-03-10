@@ -28,7 +28,7 @@ use bevy::{
 use crate::{
     Flush,
     error::{ProcessingError, Result},
-    image::{Image, bytes_to_pixels, create_readback_buffer, pixel_size, pixels_to_bytes},
+    image::{Image, create_readback_buffer, pixel_size, pixels_to_bytes},
     render::{
         RenderState,
         command::{CommandBuffer, DrawCommand},

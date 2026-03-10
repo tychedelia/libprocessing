@@ -18,7 +18,6 @@ use config::*;
 #[cfg(not(target_arch = "wasm32"))]
 use bevy::log::tracing_subscriber;
 use bevy::render::RenderPlugin;
-use bevy::render::settings::{RenderCreation, WgpuSettings};
 use bevy::{
     app::{App, AppExit},
     asset::{AssetEventSystems, io::AssetSourceBuilder},

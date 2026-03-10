@@ -125,18 +125,6 @@ fn compile_shader(source: &str) -> Result<(String, naga::Module)> {
     Ok((wgsl, module))
 }
 
-fn detect_stages(module: &naga::Module) -> (bool, bool) {
-    let has_vertex = module
-        .entry_points
-        .iter()
-        .any(|ep| ep.stage == naga::ShaderStage::Vertex);
-    let has_fragment = module
-        .entry_points
-        .iter()
-        .any(|ep| ep.stage == naga::ShaderStage::Fragment);
-    (has_vertex, has_fragment)
-}
-
 pub fn create_shader(
     In(source): In<String>,
     mut commands: Commands,
