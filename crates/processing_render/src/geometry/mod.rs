@@ -16,7 +16,7 @@ use bevy::{
     render::render_resource::PrimitiveTopology,
 };
 
-use crate::error::{ProcessingError, Result};
+use processing_core::error::{ProcessingError, Result};
 use crate::render::primitive::{box_mesh, sphere_mesh};
 
 pub struct GeometryPlugin;

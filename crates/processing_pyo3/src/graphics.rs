@@ -59,7 +59,13 @@ impl Light {
 #[pyclass]
 #[derive(Debug)]
 pub struct Image {
-    entity: Entity,
+    pub(crate) entity: Entity,
+}
+
+impl Image {
+    pub(crate) fn from_entity(entity: Entity) -> Self {
+        Self { entity }
+    }
 }
 
 impl Drop for Image {

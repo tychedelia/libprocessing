@@ -36,4 +36,6 @@ pub enum ProcessingError {
     UnknownMaterialProperty(String),
     #[error("GLTF load error: {0}")]
     GltfLoadError(String),
+    #[error("Webcam not connected")]
+    WebcamNotConnected,
 }

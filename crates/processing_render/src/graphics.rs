@@ -25,9 +25,9 @@ use bevy::{
     window::WindowRef,
 };
 
+use processing_core::error::{ProcessingError, Result};
 use crate::{
     Flush,
-    error::{ProcessingError, Result},
     image::{Image, bytes_to_pixels, create_readback_buffer, pixel_size, pixels_to_bytes},
     render::{
         RenderState,

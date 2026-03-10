@@ -35,9 +35,8 @@ use raw_window_handle::{
     RawWindowHandle, WindowHandle,
 };
 
+use processing_core::error::{self, ProcessingError, Result};
 use crate::{
-    error,
-    error::{ProcessingError, Result},
     image::{Image, ImageTextures},
 };
 

@@ -2,7 +2,7 @@ pub mod pbr;
 
 use bevy::prelude::*;
 
-use crate::error::{ProcessingError, Result};
+use processing_core::error::{ProcessingError, Result};
 use crate::render::material::UntypedMaterial;
 
 pub struct MaterialPlugin;
