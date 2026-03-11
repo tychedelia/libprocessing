@@ -108,7 +108,7 @@ fn detect_environment(py: Python<'_>) -> PyResult<String> {
 }
 
 #[pymodule]
-mod processing {
+mod mewnala {
     use super::*;
 
     #[pymodule_export]

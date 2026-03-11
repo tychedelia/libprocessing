@@ -15,7 +15,7 @@ webcam = ["dep:processing_webcam"]
 
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = ["crates/*", "tools/*"]
 
 [workspace.lints.clippy]
 type_complexity = "allow"

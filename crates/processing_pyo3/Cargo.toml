@@ -7,7 +7,7 @@ edition = "2024"
 workspace = true
 
 [lib]
-name = "processing"
+name = "mewnala"
 crate-type = ["cdylib"]
 
 [features]
@@ -21,8 +21,5 @@ pyo3 = { workspace = true, features = ["experimental-inspect"] }
 processing = { workspace = true }
 processing_webcam = { workspace = true, optional = true }
 bevy = { workspace = true, features = ["file_watcher"] }
-glfw = { version = "0.60.0"}
-png = "0.18"
-
-[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 glfw = { version = "0.60.0", features = ["static-link"] }
+png = "0.18"

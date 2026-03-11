@@ -3,12 +3,24 @@ requires = ["maturin>=1.10,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "processing"
-requires-python = ">=3.8"
+name = "mewnala"
+requires-python = ">=3.10"
+description = "Python bindings for libprocessing — a creative coding library inspired by Processing"
+license = "MIT OR Apache-2.0"
+authors = [
+    { name = "The Processing Foundation" },
+]
 classifiers = [
+    "Development Status :: 3 - Alpha",
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
-    "Programming Language :: Python :: Implementation :: PyPy",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Graphics",
+    "Typing :: Typed",
 ]
 dynamic = ["version"]
 dependencies = [
@@ -16,11 +28,22 @@ dependencies = [
     "jupyter>=1.1.1",
 ]
 
+[project.urls]
+Homepage = "https://github.com/processing/libprocessing"
+Repository = "https://github.com/processing/libprocessing"
+Issues = "https://github.com/processing/libprocessing/issues"
+
 [dependency-groups]
 dev = ["maturin>=1.10,<2.0"]
 
 [tool.maturin]
 manifest-path = "Cargo.toml"
+include = [
+    { path = "mewnala/*.pyi", format = "sdist" },
+    { path = "mewnala/*.pyi", format = "wheel" },
+    { path = "mewnala/py.typed", format = "sdist" },
+    { path = "mewnala/py.typed", format = "wheel" },
+]
 
 [tool.uv]
 cache-keys = [

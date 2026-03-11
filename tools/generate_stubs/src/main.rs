@@ -2,22 +2,24 @@ use pyo3_introspection::{introspect_cdylib, module_stub_files};
 use std::path::{Path, PathBuf};
 use std::{env, fs};
 
+fn workspace_root() -> &'static Path {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+}
+
 fn find_cdylib() -> PathBuf {
-    let target_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join("target")
-        .join("release");
+    let target_dir = workspace_root().join("target").join("release");
 
     // Platform-specific library name
     let lib_name = if cfg!(target_os = "macos") {
-        "libprocessing.dylib"
+        "libmewnala.dylib"
     } else if cfg!(target_os = "windows") {
-        "processing.dll"
+        "mewnala.dll"
     } else {
-        "libprocessing.so"
+        "libmewnala.so"
     };
 
     let path = target_dir.join(lib_name);
@@ -39,14 +41,15 @@ fn main() {
 
     eprintln!("Introspecting: {}", cdylib_path.display());
 
-    let module = introspect_cdylib(&cdylib_path, "processing").expect("Failed to introspect cdylib");
+    let module =
+        introspect_cdylib(&cdylib_path, "mewnala").expect("Failed to introspect cdylib");
 
     let stubs = module_stub_files(&module);
 
-    let output_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join("processing_pyo3");
+    let output_dir = workspace_root()
+        .join("crates")
+        .join("processing_pyo3")
+        .join("mewnala");
 
     for (filename, content) in &stubs {
         let out_path = output_dir.join(filename);
