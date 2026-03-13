@@ -4253,7 +4253,7 @@ dependencies = [
 [[package]]
 name = "nannou_webcam"
 version = "0.1.0"
-source = "git+https://github.com/nannou-org/nannou?branch=bevy-refactor#4347507fb0684bad53e8f86e9e8cbbe81fe0f1a7"
+source = "git+https://github.com/nannou-org/nannou?branch=bevy-refactor#f38e6d9f3c22b4a7b5df94ede8acf9a254ccf117"
 dependencies = [
  "bevy",
  "console_error_panic_hook",
