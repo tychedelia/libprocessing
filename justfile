@@ -8,6 +8,9 @@ default:
 py-build:
     cd crates/processing_pyo3; uv run maturin develop --release
 
+py-stubs: py-build
+    cargo run --release -p generate_stubs
+
 py-run file: py-build
     cd crates/processing_pyo3; uv run python ./examples/{{file}}
 
