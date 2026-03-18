@@ -3,6 +3,7 @@ use processing::prelude::*;
 use pyo3::types::PyDict;
 use pyo3::{exceptions::PyRuntimeError, prelude::*};
 
+use crate::compute::Buffer;
 use crate::shader::Shader;
 
 #[pyclass(unsendable)]
@@ -10,22 +11,26 @@ pub struct Material {
     pub(crate) entity: Entity,
 }
 
-fn py_to_material_value(value: &Bound<'_, PyAny>) -> PyResult<material::MaterialValue> {
+pub(crate) fn py_to_material_value(value: &Bound<'_, PyAny>) -> PyResult<shader_value::ShaderValue> {
     if let Ok(v) = value.extract::<f32>() {
-        return Ok(material::MaterialValue::Float(v));
+        return Ok(shader_value::ShaderValue::Float(v));
     }
     if let Ok(v) = value.extract::<i32>() {
-        return Ok(material::MaterialValue::Int(v));
+        return Ok(shader_value::ShaderValue::Int(v));
     }
 
     if let Ok(v) = value.extract::<[f32; 4]>() {
-        return Ok(material::MaterialValue::Float4(v));
+        return Ok(shader_value::ShaderValue::Float4(v));
     }
     if let Ok(v) = value.extract::<[f32; 3]>() {
-        return Ok(material::MaterialValue::Float3(v));
+        return Ok(shader_value::ShaderValue::Float3(v));
     }
     if let Ok(v) = value.extract::<[f32; 2]>() {
-        return Ok(material::MaterialValue::Float2(v));
+        return Ok(shader_value::ShaderValue::Float2(v));
+    }
+
+    if let Ok(buf) = value.extract::<PyRef<Buffer>>() {
+        return Ok(shader_value::ShaderValue::Buffer(buf.entity));
     }
 
     Err(PyRuntimeError::new_err(format!(

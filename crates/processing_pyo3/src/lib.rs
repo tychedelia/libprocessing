@@ -8,6 +8,7 @@
 //!
 //! To allow Python users to create a similar experience, we provide module-level
 //! functions that forward to a singleton Graphics object pub(crate) behind the scenes.
+pub(crate) mod compute;
 mod glfw;
 mod gltf;
 mod graphics;
@@ -17,6 +18,7 @@ pub(crate) mod shader;
 #[cfg(feature = "webcam")]
 mod webcam;
 
+use compute::{Buffer, Compute};
 use graphics::{Geometry, Graphics, Image, Light, Topology, get_graphics, get_graphics_mut};
 use material::Material;
 
@@ -52,6 +54,8 @@ fn processing(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Gltf>()?;
     m.add_class::<Shader>()?;
     m.add_class::<Geometry>()?;
+    m.add_class::<Buffer>()?;
+    m.add_class::<Compute>()?;
     m.add_function(wrap_pyfunction!(gltf::load_gltf, m)?)?;
     m.add_function(wrap_pyfunction!(size, m)?)?;
     m.add_function(wrap_pyfunction!(run, m)?)?;

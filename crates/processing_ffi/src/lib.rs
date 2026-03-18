@@ -1222,7 +1222,7 @@ pub unsafe extern "C" fn processing_material_set_float(
         material_set(
             Entity::from_bits(mat_id),
             name,
-            material::MaterialValue::Float(value),
+            shader_value::ShaderValue::Float(value),
         )
     });
 }
@@ -1246,7 +1246,7 @@ pub unsafe extern "C" fn processing_material_set_float4(
         material_set(
             Entity::from_bits(mat_id),
             name,
-            material::MaterialValue::Float4([r, g, b, a]),
+            shader_value::ShaderValue::Float4([r, g, b, a]),
         )
     });
 }

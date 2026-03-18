@@ -2,7 +2,7 @@ mod glfw;
 
 use glfw::GlfwContext;
 use processing::prelude::*;
-use processing_render::material::MaterialValue;
+use processing_render::shader_value::ShaderValue;
 use processing_render::render::command::DrawCommand;
 
 fn main() {
@@ -53,7 +53,7 @@ fn sketch() -> error::Result<()> {
         material_set(
             duck_mat,
             "base_color",
-            MaterialValue::Float4([r, g, b, 1.0]),
+            ShaderValue::Float4([r, g, b, 1.0]),
         )?;
 
         graphics_begin_draw(graphics)?;

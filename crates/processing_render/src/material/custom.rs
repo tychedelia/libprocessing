@@ -33,6 +33,7 @@ use bevy::{
         render_phase::DrawFunctions,
         render_resource::{BindGroupLayoutDescriptor, BindingResources, UnpreparedBindGroup},
         renderer::RenderDevice,
+        storage::GpuShaderBuffer,
         sync_world::MainEntity,
         texture::GpuImage,
     },
@@ -42,7 +43,7 @@ use bevy_naga_reflect::dynamic_shader::DynamicShader;
 
 use bevy::shader::Shader as ShaderAsset;
 
-use crate::material::MaterialValue;
+use crate::shader_value::ShaderValue;
 use crate::render::material::UntypedMaterial;
 use processing_core::config::{Config, ConfigKey};
 use processing_core::error::{ProcessingError, Result};
@@ -235,9 +236,9 @@ pub fn create_custom(
 pub fn set_property(
     material: &mut CustomMaterial,
     name: &str,
-    value: &MaterialValue,
+    value: &ShaderValue,
 ) -> Result<()> {
-    let reflect_value: Box<dyn PartialReflect> = material_value_to_reflect(value)?;
+    let reflect_value: Box<dyn PartialReflect> = shader_value_to_reflect(value)?;
 
     if let Some(field) = material.shader.field_mut(name) {
         field.apply(&*reflect_value);
@@ -257,27 +258,32 @@ pub fn set_property(
     Err(ProcessingError::UnknownMaterialProperty(name.to_string()))
 }
 
-fn material_value_to_reflect(value: &MaterialValue) -> Result<Box<dyn PartialReflect>> {
+pub(crate) fn shader_value_to_reflect(value: &ShaderValue) -> Result<Box<dyn PartialReflect>> {
     Ok(match value {
-        MaterialValue::Float(v) => Box::new(*v),
-        MaterialValue::Float2(v) => Box::new(Vec2::from_array(*v)),
-        MaterialValue::Float3(v) => Box::new(Vec3::from_array(*v)),
-        MaterialValue::Float4(v) => Box::new(Vec4::from_array(*v)),
-        MaterialValue::Int(v) => Box::new(*v),
-        MaterialValue::Int2(v) => Box::new(IVec2::from_array(*v)),
-        MaterialValue::Int3(v) => Box::new(IVec3::from_array(*v)),
-        MaterialValue::Int4(v) => Box::new(IVec4::from_array(*v)),
-        MaterialValue::UInt(v) => Box::new(*v),
-        MaterialValue::Mat4(v) => Box::new(Mat4::from_cols_array(v)),
-        MaterialValue::Texture(_) => {
+        ShaderValue::Float(v) => Box::new(*v),
+        ShaderValue::Float2(v) => Box::new(Vec2::from_array(*v)),
+        ShaderValue::Float3(v) => Box::new(Vec3::from_array(*v)),
+        ShaderValue::Float4(v) => Box::new(Vec4::from_array(*v)),
+        ShaderValue::Int(v) => Box::new(*v),
+        ShaderValue::Int2(v) => Box::new(IVec2::from_array(*v)),
+        ShaderValue::Int3(v) => Box::new(IVec3::from_array(*v)),
+        ShaderValue::Int4(v) => Box::new(IVec4::from_array(*v)),
+        ShaderValue::UInt(v) => Box::new(*v),
+        ShaderValue::Mat4(v) => Box::new(Mat4::from_cols_array(v)),
+        ShaderValue::Texture(_) => {
             return Err(ProcessingError::UnknownMaterialProperty(
                 "Texture properties not yet supported for custom materials".to_string(),
+            ));
+        }
+        ShaderValue::Buffer(_) => {
+            return Err(ProcessingError::UnknownMaterialProperty(
+                "Buffer properties not supported for custom materials".to_string(),
             ));
         }
     })
 }
 
-fn find_param_containing_field(shader: &DynamicShader, field_name: &str) -> Option<String> {
+pub(crate) fn find_param_containing_field(shader: &DynamicShader, field_name: &str) -> Option<String> {
     for i in 0..shader.field_len() {
         if let Some(field) = shader.field_at(i)
             && let ReflectRef::Struct(s) = field.reflect_ref()
@@ -348,6 +354,7 @@ impl ErasedRenderAsset for CustomMaterial {
         SResMut<MaterialBindGroupAllocators>,
         SResMut<RenderMaterialBindings>,
         SRes<RenderAssets<GpuImage>>,
+        SRes<RenderAssets<GpuShaderBuffer>>,
     );
 
     fn prepare_asset(
@@ -360,6 +367,7 @@ impl ErasedRenderAsset for CustomMaterial {
             bind_group_allocators,
             render_material_bindings,
             gpu_images,
+            gpu_buffers,
         ): &mut SystemParamItem<Self::Param>,
     ) -> std::result::Result<Self::ErasedAsset, PrepareAssetError<Self::SourceAsset>> {
         let reflection = source_asset.shader.reflection();
@@ -369,7 +377,7 @@ impl ErasedRenderAsset for CustomMaterial {
             BindGroupLayoutDescriptor::new("custom_material_bind_group", &layout_entries);
 
         let bindings =
-            reflection.create_bindings(3, &source_asset.shader, render_device, gpu_images);
+            reflection.create_bindings(3, &source_asset.shader, render_device, gpu_images, gpu_buffers);
 
         let unprepared = UnpreparedBindGroup {
             bindings: BindingResources(bindings),

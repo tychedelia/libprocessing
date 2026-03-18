@@ -1,4 +1,6 @@
+pub mod compute;
 pub mod geometry;
+pub mod shader_value;
 pub mod gltf;
 mod graphics;
 pub mod image;
@@ -46,11 +48,13 @@ impl Plugin for ProcessingRenderPlugin {
         let has_sketch_file = config
             .get(ConfigKey::SketchFileName)
             .is_some_and(|f| !f.is_empty());
-        if has_sketch_file && let Some(sketch_path) = config.get(ConfigKey::SketchRootPath) {
-            app.register_asset_source(
-                "sketch_directory",
-                AssetSourceBuilder::platform_default(sketch_path, None),
-            );
+        if has_sketch_file {
+            if let Some(sketch_path) = config.get(ConfigKey::SketchRootPath) {
+                app.register_asset_source(
+                    "sketch_directory",
+                    AssetSourceBuilder::platform_default(sketch_path, None),
+                );
+            }
         }
 
         if has_sketch_file {
@@ -66,6 +70,7 @@ impl Plugin for ProcessingRenderPlugin {
             material::MaterialPlugin,
             bevy::pbr::wireframe::WireframePlugin::default(),
             material::custom::CustomMaterialPlugin,
+            compute::ComputePlugin,
         ));
 
         app.add_systems(First, (clear_transient_meshes, activate_cameras))
@@ -1181,7 +1186,7 @@ pub fn material_create_pbr() -> error::Result<Entity> {
 pub fn material_set(
     entity: Entity,
     name: impl Into<String>,
-    value: material::MaterialValue,
+    value: shader_value::ShaderValue,
 ) -> error::Result<()> {
     app_mut(|app| {
         app.world_mut()
@@ -1257,6 +1262,84 @@ pub fn gltf_light(gltf_entity: Entity, index: usize) -> error::Result<Entity> {
     app_mut(|app| {
         app.world_mut()
             .run_system_cached_with(gltf::light, (gltf_entity, index))
+            .unwrap()
+    })
+}
+
+pub fn buffer_create(size: u64) -> error::Result<Entity> {
+    app_mut(|app| {
+        Ok(app
+            .world_mut()
+            .run_system_cached_with(compute::create_buffer, size)
+            .unwrap())
+    })
+}
+
+pub fn buffer_create_with_data(data: Vec<u8>) -> error::Result<Entity> {
+    app_mut(|app| {
+        Ok(app
+            .world_mut()
+            .run_system_cached_with(compute::create_buffer_with_data, data)
+            .unwrap())
+    })
+}
+
+pub fn buffer_write(entity: Entity, data: Vec<u8>) -> error::Result<()> {
+    app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(compute::write_buffer, (entity, data))
+            .unwrap()
+    })
+}
+
+pub fn buffer_read(entity: Entity) -> error::Result<Vec<u8>> {
+    app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(compute::read_buffer, entity)
+            .unwrap()
+    })
+}
+
+pub fn buffer_destroy(entity: Entity) -> error::Result<()> {
+    app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(compute::destroy_buffer, entity)
+            .unwrap()
+    })
+}
+
+pub fn compute_create(shader_entity: Entity) -> error::Result<Entity> {
+    app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(compute::create_compute, shader_entity)
+            .unwrap()
+    })
+}
+
+pub fn compute_set(
+    entity: Entity,
+    name: impl Into<String>,
+    value: shader_value::ShaderValue,
+) -> error::Result<()> {
+    app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(compute::set_compute_property, (entity, name.into(), value))
+            .unwrap()
+    })
+}
+
+pub fn compute_dispatch(entity: Entity, x: u32, y: u32, z: u32) -> error::Result<()> {
+    app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(compute::dispatch, (entity, x, y, z))
+            .unwrap()
+    })
+}
+
+pub fn compute_destroy(entity: Entity) -> error::Result<()> {
+    app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(compute::destroy_compute, entity)
             .unwrap()
     })
 }

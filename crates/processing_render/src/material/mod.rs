@@ -4,6 +4,7 @@ pub mod pbr;
 use bevy::prelude::*;
 
 use crate::render::material::UntypedMaterial;
+use crate::shader_value::ShaderValue;
 use processing_core::error::{ProcessingError, Result};
 
 pub struct MaterialPlugin;
@@ -27,21 +28,6 @@ impl Plugin for MaterialPlugin {
 #[derive(Resource)]
 pub struct DefaultMaterial(pub Entity);
 
-#[derive(Debug, Clone)]
-pub enum MaterialValue {
-    Float(f32),
-    Float2([f32; 2]),
-    Float3([f32; 3]),
-    Float4([f32; 4]),
-    Int(i32),
-    Int2([i32; 2]),
-    Int3([i32; 3]),
-    Int4([i32; 4]),
-    UInt(u32),
-    Mat4([f32; 16]),
-    Texture(Entity),
-}
-
 pub fn create_pbr(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -55,7 +41,7 @@ pub fn create_pbr(
 }
 
 pub fn set_property(
-    In((entity, name, value)): In<(Entity, String, MaterialValue)>,
+    In((entity, name, value)): In<(Entity, String, ShaderValue)>,
     material_handles: Query<&UntypedMaterial>,
     mut standard_materials: ResMut<Assets<StandardMaterial>>,
     mut custom_materials: ResMut<Assets<custom::CustomMaterial>>,
