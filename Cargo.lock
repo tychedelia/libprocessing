@@ -1265,6 +1265,7 @@ checksum = "bff34eb29ff4b8a8688bc7299f14fb6b597461ca80fec03ed7d22939ab33e48f"
 [[package]]
 name = "bevy_naga_reflect"
 version = "0.1.0"
+source = "git+https://github.com/tychedelia/bevy_naga_reflect?branch=main#93fa425205163825dab0cea79213c12541ee750f"
 dependencies = [
  "bevy",
  "naga",

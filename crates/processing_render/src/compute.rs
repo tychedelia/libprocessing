@@ -105,18 +105,50 @@ pub fn create_buffer_with_data(
 pub fn write_buffer(
     In((entity, data)): In<(Entity, Vec<u8>)>,
     p_buffers: Query<&Buffer>,
-    buffer_gpu_buffers: Res<BufferGpuBuffers>,
-    render_queue: Res<RenderQueue>,
+    mut shader_buffers: ResMut<Assets<ShaderBuffer>>,
 ) -> Result<()> {
-    let _p_buffer = p_buffers
+    let p_buffer = p_buffers
         .get(entity)
         .map_err(|_| ProcessingError::BufferNotFound)?;
-    let gpu_buffer = buffer_gpu_buffers
-        .get(&entity)
-        .ok_or(ProcessingError::BufferNotFound)?;
-
-    render_queue.write_buffer(gpu_buffer, 0, &data);
+    if let Some(mut sb) = shader_buffers.get_mut(&p_buffer.handle) {
+        sb.data = Some(data);
+    }
     Ok(())
+}
+
+pub fn write_buffer_element(
+    In((entity, offset, data)): In<(Entity, u64, Vec<u8>)>,
+    p_buffers: Query<&Buffer>,
+    mut shader_buffers: ResMut<Assets<ShaderBuffer>>,
+) -> Result<()> {
+    let p_buffer = p_buffers
+        .get(entity)
+        .map_err(|_| ProcessingError::BufferNotFound)?;
+    if let Some(mut sb) = shader_buffers.get_mut(&p_buffer.handle) {
+        let buf = sb
+            .data
+            .get_or_insert_with(|| vec![0u8; p_buffer.size as usize]);
+        let start = offset as usize;
+        buf[start..start + data.len()].copy_from_slice(&data);
+    }
+    Ok(())
+}
+
+pub fn read_buffer_element(
+    In((entity, offset, len)): In<(Entity, u64, u64)>,
+    p_buffers: Query<&Buffer>,
+    shader_buffers: Res<Assets<ShaderBuffer>>,
+) -> Result<Option<Vec<u8>>> {
+    let p_buffer = p_buffers
+        .get(entity)
+        .map_err(|_| ProcessingError::BufferNotFound)?;
+    let sb = shader_buffers
+        .get(&p_buffer.handle)
+        .ok_or(ProcessingError::BufferNotFound)?;
+    Ok(sb.data.as_ref().map(|data| {
+        let start = offset as usize;
+        data[start..start + len as usize].to_vec()
+    }))
 }
 
 pub fn read_buffer(
@@ -125,6 +157,7 @@ pub fn read_buffer(
     buffer_gpu_buffers: Res<BufferGpuBuffers>,
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
+    mut shader_buffers: ResMut<Assets<ShaderBuffer>>,
 ) -> Result<Vec<u8>> {
     let p_buffer = p_buffers
         .get(entity)
@@ -132,6 +165,7 @@ pub fn read_buffer(
     let gpu_buffer = buffer_gpu_buffers
         .get(&entity)
         .ok_or(ProcessingError::BufferNotFound)?;
+    let handle = p_buffer.handle.clone();
 
     let mut encoder = render_device.create_command_encoder(&CommandEncoderDescriptor::default());
     encoder.copy_buffer_to_buffer(gpu_buffer, 0, &p_buffer.readback_buffer, 0, p_buffer.size);
@@ -150,6 +184,10 @@ pub fn read_buffer(
 
     let data = buffer_slice.get_mapped_range().to_vec();
     p_buffer.readback_buffer.unmap();
+
+    if let Some(mut sb) = shader_buffers.get_mut(&handle) {
+        sb.data = Some(data.clone());
+    }
 
     Ok(data)
 }

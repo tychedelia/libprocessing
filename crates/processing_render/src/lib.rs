@@ -1292,6 +1292,26 @@ pub fn buffer_write(entity: Entity, data: Vec<u8>) -> error::Result<()> {
     })
 }
 
+pub fn buffer_write_element(entity: Entity, offset: u64, data: Vec<u8>) -> error::Result<()> {
+    app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(compute::write_buffer_element, (entity, offset, data))
+            .unwrap()
+    })
+}
+
+pub fn buffer_read_element(
+    entity: Entity,
+    offset: u64,
+    len: u64,
+) -> error::Result<Option<Vec<u8>>> {
+    app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(compute::read_buffer_element, (entity, offset, len))
+            .unwrap()
+    })
+}
+
 pub fn buffer_read(entity: Entity) -> error::Result<Vec<u8>> {
     app_mut(|app| {
         app.world_mut()
@@ -1330,6 +1350,7 @@ pub fn compute_set(
 
 pub fn compute_dispatch(entity: Entity, x: u32, y: u32, z: u32) -> error::Result<()> {
     app_mut(|app| {
+        app.update();
         app.world_mut()
             .run_system_cached_with(compute::dispatch, (entity, x, y, z))
             .unwrap()
