@@ -1,12 +1,12 @@
 pub mod compute;
 pub mod geometry;
-pub mod shader_value;
 pub mod gltf;
 mod graphics;
 pub mod image;
 pub mod light;
 pub mod material;
 pub mod render;
+pub mod shader_value;
 pub mod sketch;
 pub(crate) mod surface;
 pub mod transform;

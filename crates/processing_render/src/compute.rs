@@ -1,5 +1,8 @@
 use std::ops::Deref;
 
+use bevy::asset::RenderAssetUsages;
+use bevy::reflect::{PartialReflect, ReflectMut};
+use bevy::shader::Shader as ShaderAsset;
 use bevy::{
     ecs::entity::EntityHashMap,
     prelude::*,
@@ -16,9 +19,6 @@ use bevy::{
         storage::{GpuShaderBuffer, ShaderBuffer},
     },
 };
-use bevy::asset::RenderAssetUsages;
-use bevy::reflect::{PartialReflect, ReflectMut};
-use bevy::shader::Shader as ShaderAsset;
 
 use bevy_naga_reflect::dynamic_shader::DynamicShader;
 use bevy_naga_reflect::reflect::ParameterCategory;
@@ -212,10 +212,8 @@ pub fn create_compute(
             .validate(&program.module)
             .map_err(|e| ProcessingError::ShaderCompilationError(e.to_string()))?;
         let mut wgsl_out = String::new();
-        let mut writer = naga::back::wgsl::Writer::new(
-            &mut wgsl_out,
-            naga::back::wgsl::WriterFlags::empty(),
-        );
+        let mut writer =
+            naga::back::wgsl::Writer::new(&mut wgsl_out, naga::back::wgsl::WriterFlags::empty());
         writer
             .write(&program.module, &info)
             .map_err(|e| ProcessingError::ShaderCompilationError(e.to_string()))?;
@@ -282,7 +280,10 @@ pub fn dispatch(
     let (wgsl, entry_point, layout_entries_per_group, bindings_per_group): (
         String,
         String,
-        Vec<(u32, Vec<bevy::render::render_resource::BindGroupLayoutEntry>)>,
+        Vec<(
+            u32,
+            Vec<bevy::render::render_resource::BindGroupLayoutEntry>,
+        )>,
         Vec<(u32, Vec<(u32, ExtractedBinding)>)>,
     ) = {
         let compute = world
@@ -329,7 +330,10 @@ pub fn dispatch(
                             ty,
                             &mut buffer,
                         );
-                        bindings.push((binding_index, ExtractedBinding::Uniform(buffer.as_ref().to_vec())));
+                        bindings.push((
+                            binding_index,
+                            ExtractedBinding::Uniform(buffer.as_ref().to_vec()),
+                        ));
                     }
                     _ => continue,
                 }
@@ -356,14 +360,13 @@ pub fn dispatch(
     let mut bind_group_layouts = Vec::new();
     let mut bind_groups = Vec::new();
 
-    for ((_, layout_entries), (_, bindings)) in
-        layout_entries_per_group.iter().zip(bindings_per_group.iter())
+    for ((_, layout_entries), (_, bindings)) in layout_entries_per_group
+        .iter()
+        .zip(bindings_per_group.iter())
     {
         let render_device = world.resource::<RenderDevice>();
-        let layout = render_device.create_bind_group_layout(
-            Some("compute_bind_group_layout"),
-            layout_entries,
-        );
+        let layout = render_device
+            .create_bind_group_layout(Some("compute_bind_group_layout"), layout_entries);
 
         let mut entries: Vec<(u32, WgpuBuffer)> = Vec::new();
         for (binding_index, extracted) in bindings {

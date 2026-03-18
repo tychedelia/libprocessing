@@ -43,8 +43,8 @@ use bevy_naga_reflect::dynamic_shader::DynamicShader;
 
 use bevy::shader::Shader as ShaderAsset;
 
-use crate::shader_value::ShaderValue;
 use crate::render::material::UntypedMaterial;
+use crate::shader_value::ShaderValue;
 use processing_core::config::{Config, ConfigKey};
 use processing_core::error::{ProcessingError, Result};
 
@@ -233,11 +233,7 @@ pub fn create_custom(
     Ok(commands.spawn(UntypedMaterial(handle.untyped())).id())
 }
 
-pub fn set_property(
-    material: &mut CustomMaterial,
-    name: &str,
-    value: &ShaderValue,
-) -> Result<()> {
+pub fn set_property(material: &mut CustomMaterial, name: &str, value: &ShaderValue) -> Result<()> {
     let reflect_value: Box<dyn PartialReflect> = shader_value_to_reflect(value)?;
 
     if let Some(field) = material.shader.field_mut(name) {
@@ -283,7 +279,10 @@ pub(crate) fn shader_value_to_reflect(value: &ShaderValue) -> Result<Box<dyn Par
     })
 }
 
-pub(crate) fn find_param_containing_field(shader: &DynamicShader, field_name: &str) -> Option<String> {
+pub(crate) fn find_param_containing_field(
+    shader: &DynamicShader,
+    field_name: &str,
+) -> Option<String> {
     for i in 0..shader.field_len() {
         if let Some(field) = shader.field_at(i)
             && let ReflectRef::Struct(s) = field.reflect_ref()
@@ -376,8 +375,13 @@ impl ErasedRenderAsset for CustomMaterial {
         let bind_group_layout =
             BindGroupLayoutDescriptor::new("custom_material_bind_group", &layout_entries);
 
-        let bindings =
-            reflection.create_bindings(3, &source_asset.shader, render_device, gpu_images, gpu_buffers);
+        let bindings = reflection.create_bindings(
+            3,
+            &source_asset.shader,
+            render_device,
+            gpu_images,
+            gpu_buffers,
+        );
 
         let unprepared = UnpreparedBindGroup {
             bindings: BindingResources(bindings),

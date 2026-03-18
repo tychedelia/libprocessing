@@ -11,7 +11,9 @@ pub struct Material {
     pub(crate) entity: Entity,
 }
 
-pub(crate) fn py_to_material_value(value: &Bound<'_, PyAny>) -> PyResult<shader_value::ShaderValue> {
+pub(crate) fn py_to_material_value(
+    value: &Bound<'_, PyAny>,
+) -> PyResult<shader_value::ShaderValue> {
     if let Ok(v) = value.extract::<f32>() {
         return Ok(shader_value::ShaderValue::Float(v));
     }

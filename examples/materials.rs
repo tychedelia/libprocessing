@@ -51,7 +51,11 @@ fn sketch() -> error::Result<()> {
             let roughness = col as f32 / (cols - 1) as f32;
             let metallic = row as f32 / (rows - 1) as f32;
 
-            material_set(mat, "roughness", shader_value::ShaderValue::Float(roughness))?;
+            material_set(
+                mat,
+                "roughness",
+                shader_value::ShaderValue::Float(roughness),
+            )?;
             material_set(mat, "metallic", shader_value::ShaderValue::Float(metallic))?;
             materials.push(mat);
         }
