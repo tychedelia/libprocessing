@@ -149,8 +149,8 @@ impl CameraProjection for ProcessingProjection {
     }
 
     fn update(&mut self, width: f32, height: f32) {
-        self.width = width;
-        self.height = height;
+        // in order to preserve our coordinate system where 1px in world space = 1px on the render
+        // target, we ignore bevy's update here
     }
 
     fn far(&self) -> f32 {
@@ -240,7 +240,6 @@ pub fn create(
             near: 0.0,
             far: 1000.0,
         }),
-        Msaa::Off,
         Transform::from_xyz(0.0, 0.0, 999.9),
         render_layer,
         CommandBuffer::new(),
