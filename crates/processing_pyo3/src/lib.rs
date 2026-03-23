@@ -12,6 +12,7 @@ mod glfw;
 mod gltf;
 mod graphics;
 pub(crate) mod material;
+pub(crate) mod math;
 mod midi;
 pub(crate) mod shader;
 #[cfg(feature = "webcam")]
@@ -138,6 +139,46 @@ mod mewnala {
     const MITER: u8 = 1;
     #[pymodule_export]
     const BEVEL: u8 = 2;
+
+    #[pymodule]
+    mod math {
+        use super::*;
+
+        #[pymodule_export]
+        use crate::math::PyQuat;
+        #[pymodule_export]
+        use crate::math::PyVec2;
+        #[pymodule_export]
+        use crate::math::PyVec3;
+        #[pymodule_export]
+        use crate::math::PyVec4;
+        #[pymodule_export]
+        use crate::math::PyVecIter;
+
+        #[pyfunction]
+        #[pyo3(signature = (*args))]
+        fn vec2(args: &Bound<'_, PyTuple>) -> PyResult<crate::math::PyVec2> {
+            crate::math::PyVec2::py_new(args)
+        }
+
+        #[pyfunction]
+        #[pyo3(signature = (*args))]
+        fn vec3(args: &Bound<'_, PyTuple>) -> PyResult<crate::math::PyVec3> {
+            crate::math::PyVec3::py_new(args)
+        }
+
+        #[pyfunction]
+        #[pyo3(signature = (*args))]
+        fn vec4(args: &Bound<'_, PyTuple>) -> PyResult<crate::math::PyVec4> {
+            crate::math::PyVec4::py_new(args)
+        }
+
+        #[pyfunction]
+        #[pyo3(signature = (*args))]
+        fn quat(args: &Bound<'_, PyTuple>) -> PyResult<crate::math::PyQuat> {
+            crate::math::PyQuat::py_new(args)
+        }
+    }
 
     #[cfg(feature = "webcam")]
     #[pymodule_export]
@@ -352,20 +393,15 @@ mod mewnala {
     }
 
     #[pyfunction]
-    #[pyo3(pass_module)]
-    fn camera_position(module: &Bound<'_, PyModule>, x: f32, y: f32, z: f32) -> PyResult<()> {
-        graphics!(module).camera_position(x, y, z)
+    #[pyo3(pass_module, signature = (*args))]
+    fn camera_position(module: &Bound<'_, PyModule>, args: &Bound<'_, PyTuple>) -> PyResult<()> {
+        graphics!(module).camera_position(args)
     }
 
     #[pyfunction]
-    #[pyo3(pass_module)]
-    fn camera_look_at(
-        module: &Bound<'_, PyModule>,
-        target_x: f32,
-        target_y: f32,
-        target_z: f32,
-    ) -> PyResult<()> {
-        graphics!(module).camera_look_at(target_x, target_y, target_z)
+    #[pyo3(pass_module, signature = (*args))]
+    fn camera_look_at(module: &Bound<'_, PyModule>, args: &Bound<'_, PyTuple>) -> PyResult<()> {
+        graphics!(module).camera_look_at(args)
     }
 
     #[pyfunction]
