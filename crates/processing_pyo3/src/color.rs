@@ -42,6 +42,38 @@ fn to_srgba(color: &Color) -> Srgba {
     color.to_srgba()
 }
 
+fn components(color: &Color) -> [f32; 4] {
+    use bevy::color::ColorToComponents;
+    match *color {
+        Color::Srgba(c) => c.to_f32_array(),
+        Color::LinearRgba(c) => c.to_f32_array(),
+        Color::Hsla(c) => c.to_f32_array(),
+        Color::Hsva(c) => c.to_f32_array(),
+        Color::Hwba(c) => c.to_f32_array(),
+        Color::Laba(c) => c.to_f32_array(),
+        Color::Lcha(c) => c.to_f32_array(),
+        Color::Oklaba(c) => c.to_f32_array(),
+        Color::Oklcha(c) => c.to_f32_array(),
+        Color::Xyza(c) => c.to_f32_array(),
+    }
+}
+
+fn components_no_alpha(color: &Color) -> [f32; 3] {
+    use bevy::color::ColorToComponents;
+    match *color {
+        Color::Srgba(c) => c.to_f32_array_no_alpha(),
+        Color::LinearRgba(c) => c.to_f32_array_no_alpha(),
+        Color::Hsla(c) => c.to_f32_array_no_alpha(),
+        Color::Hsva(c) => c.to_f32_array_no_alpha(),
+        Color::Hwba(c) => c.to_f32_array_no_alpha(),
+        Color::Laba(c) => c.to_f32_array_no_alpha(),
+        Color::Lcha(c) => c.to_f32_array_no_alpha(),
+        Color::Oklaba(c) => c.to_f32_array_no_alpha(),
+        Color::Oklcha(c) => c.to_f32_array_no_alpha(),
+        Color::Xyza(c) => c.to_f32_array_no_alpha(),
+    }
+}
+
 #[pymethods]
 impl PyColor {
     // Varargs ctor for positional calls like color(255, 0, 0). ColorLike handles single-value extraction.
@@ -151,54 +183,44 @@ impl PyColor {
         parse_hex(s).map(Self)
     }
 
-    fn to_srgba(&self) -> (f32, f32, f32, f32) {
-        let s: Srgba = self.0.into();
-        (s.red, s.green, s.blue, s.alpha)
+    fn to_srgba(&self) -> Self {
+        Self(Color::Srgba(self.0.into()))
     }
 
-    fn to_linear(&self) -> (f32, f32, f32, f32) {
-        let l: LinearRgba = self.0.into();
-        (l.red, l.green, l.blue, l.alpha)
+    fn to_linear(&self) -> Self {
+        Self(Color::LinearRgba(self.0.into()))
     }
 
-    fn to_hsla(&self) -> (f32, f32, f32, f32) {
-        let h: Hsla = self.0.into();
-        (h.hue, h.saturation, h.lightness, h.alpha)
+    fn to_hsla(&self) -> Self {
+        Self(Color::Hsla(self.0.into()))
     }
 
-    fn to_hsva(&self) -> (f32, f32, f32, f32) {
-        let h: Hsva = self.0.into();
-        (h.hue, h.saturation, h.value, h.alpha)
+    fn to_hsva(&self) -> Self {
+        Self(Color::Hsva(self.0.into()))
     }
 
-    fn to_hwba(&self) -> (f32, f32, f32, f32) {
-        let h: Hwba = self.0.into();
-        (h.hue, h.whiteness, h.blackness, h.alpha)
+    fn to_hwba(&self) -> Self {
+        Self(Color::Hwba(self.0.into()))
     }
 
-    fn to_oklab(&self) -> (f32, f32, f32, f32) {
-        let o: Oklaba = self.0.into();
-        (o.lightness, o.a, o.b, o.alpha)
+    fn to_oklab(&self) -> Self {
+        Self(Color::Oklaba(self.0.into()))
     }
 
-    fn to_oklch(&self) -> (f32, f32, f32, f32) {
-        let o: Oklcha = self.0.into();
-        (o.lightness, o.chroma, o.hue, o.alpha)
+    fn to_oklch(&self) -> Self {
+        Self(Color::Oklcha(self.0.into()))
     }
 
-    fn to_lab(&self) -> (f32, f32, f32, f32) {
-        let l: Laba = self.0.into();
-        (l.lightness, l.a, l.b, l.alpha)
+    fn to_lab(&self) -> Self {
+        Self(Color::Laba(self.0.into()))
     }
 
-    fn to_lch(&self) -> (f32, f32, f32, f32) {
-        let l: Lcha = self.0.into();
-        (l.lightness, l.chroma, l.hue, l.alpha)
+    fn to_lch(&self) -> Self {
+        Self(Color::Lcha(self.0.into()))
     }
 
-    fn to_xyz(&self) -> (f32, f32, f32, f32) {
-        let x: Xyza = self.0.into();
-        (x.x, x.y, x.z, x.alpha)
+    fn to_xyz(&self) -> Self {
+        Self(Color::Xyza(self.0.into()))
     }
 
     #[getter]
@@ -317,28 +339,26 @@ impl PyColor {
     }
 
     fn to_vec3(&self) -> crate::math::PyVec3 {
-        let s = to_srgba(&self.0);
-        crate::math::PyVec3(bevy::math::Vec3::new(s.red, s.green, s.blue))
+        let c = components_no_alpha(&self.0);
+        crate::math::PyVec3(bevy::math::Vec3::from_array(c))
     }
 
     fn to_vec4(&self) -> PyVec4 {
-        let s = to_srgba(&self.0);
-        PyVec4(bevy::math::Vec4::new(s.red, s.green, s.blue, s.alpha))
+        let c = components(&self.0);
+        PyVec4(bevy::math::Vec4::from_array(c))
     }
 
     fn to_list(&self) -> Vec<f32> {
-        let s = to_srgba(&self.0);
-        vec![s.red, s.green, s.blue, s.alpha]
+        components(&self.0).to_vec()
     }
 
     fn to_tuple<'py>(&self, py: Python<'py>) -> Bound<'py, PyTuple> {
-        let s = to_srgba(&self.0);
-        PyTuple::new(py, [s.red, s.green, s.blue, s.alpha]).unwrap()
+        PyTuple::new(py, components(&self.0)).unwrap()
     }
 
     fn __repr__(&self) -> String {
-        let s = to_srgba(&self.0);
-        format!("Color({}, {}, {}, {})", s.red, s.green, s.blue, s.alpha)
+        let c = components(&self.0);
+        format!("Color({}, {}, {}, {})", c[0], c[1], c[2], c[3])
     }
 
     fn __str__(&self) -> String {
@@ -346,10 +366,12 @@ impl PyColor {
     }
 
     fn __eq__(&self, other: &Self) -> bool {
+        // Compare in sRGBA so colors in different spaces can be equal
         to_srgba(&self.0) == to_srgba(&other.0)
     }
 
     fn __hash__(&self) -> u64 {
+        // Hash in sRGBA so equal colors hash the same regardless of space
         let s = to_srgba(&self.0);
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         hash_f32(s.red, &mut hasher);
@@ -364,21 +386,17 @@ impl PyColor {
     }
 
     fn __getitem__(&self, idx: isize) -> PyResult<f32> {
-        let s = to_srgba(&self.0);
+        let c = components(&self.0);
         let idx = if idx < 0 { 4 + idx } else { idx };
-        match idx {
-            0 => Ok(s.red),
-            1 => Ok(s.green),
-            2 => Ok(s.blue),
-            3 => Ok(s.alpha),
-            _ => Err(PyTypeError::new_err("index out of range")),
+        if idx < 0 || idx >= 4 {
+            return Err(PyTypeError::new_err("index out of range"));
         }
+        Ok(c[idx as usize])
     }
 
     fn __iter__(slf: PyRef<'_, Self>) -> PyVecIter {
-        let s = to_srgba(&slf.0);
         PyVecIter {
-            values: vec![s.red, s.green, s.blue, s.alpha],
+            values: components(&slf.0).to_vec(),
             index: 0,
         }
     }
@@ -432,7 +450,7 @@ mod tests {
     #[test]
     fn test_hex_roundtrip() {
         let c = parse_hex("#FF00FF").unwrap();
-        let s = c.to_srgba();
+        let s = to_srgba(&c);
         assert!((s.red - 1.0).abs() < 0.01);
         assert!((s.green - 0.0).abs() < 0.01);
         assert!((s.blue - 1.0).abs() < 0.01);
@@ -442,7 +460,7 @@ mod tests {
     #[test]
     fn test_hex_with_alpha() {
         let c = parse_hex("#FF000080").unwrap();
-        let s = c.to_srgba();
+        let s = to_srgba(&c);
         assert!((s.red - 1.0).abs() < 0.01);
         assert!((s.alpha - 128.0 / 255.0).abs() < 0.01);
     }
@@ -500,7 +518,7 @@ mod tests {
         assert!(s.green < 0.01);
         assert!(s.blue < 0.01);
 
-        let (h, sat, l, a) = c.to_hsla();
+        let [h, sat, l, a] = components(&c.to_hsla().0);
         assert!((h - 0.0).abs() < 0.5);
         assert!((sat - 1.0).abs() < 0.01);
         assert!((l - 0.5).abs() < 0.01);
@@ -510,7 +528,7 @@ mod tests {
     #[test]
     fn test_oklch_roundtrip() {
         let c = PyColor::oklch(0.7, 0.15, 30.0, 1.0);
-        let (l, ch, h, a) = c.to_oklch();
+        let [l, ch, h, a] = components(&c.to_oklch().0);
         assert!((l - 0.7).abs() < 0.01);
         assert!((ch - 0.15).abs() < 0.01);
         assert!((h - 30.0).abs() < 0.5);
@@ -520,7 +538,7 @@ mod tests {
     #[test]
     fn test_linear_roundtrip() {
         let c = PyColor::linear(0.5, 0.25, 0.1, 0.8);
-        let (r, g, b, a) = c.to_linear();
+        let [r, g, b, a] = components(&c.to_linear().0);
         assert!((r - 0.5).abs() < 0.01);
         assert!((g - 0.25).abs() < 0.01);
         assert!((b - 0.1).abs() < 0.01);
