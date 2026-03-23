@@ -86,6 +86,11 @@ pub(crate) fn extract_vec4(args: &Bound<'_, PyTuple>) -> PyResult<Vec4> {
     Ok(args.extract::<Vec4Arg>()?.into_vec4())
 }
 
+
+// Implements a PyVecN class with the given name, fields, and underlying glam type,
+// including arithmetic operations, indexing, iteration, and common vector methods, etc.
+// The `extra` block can be used to add additional methods specific to certain vector types
+// (e.g., angle/rotate for Vec2, cross for Vec3).
 macro_rules! impl_py_vec {
     (
         $name:ident, $py_name:literal, $n:literal,
