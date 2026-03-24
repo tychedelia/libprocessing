@@ -150,9 +150,7 @@ fn u32_to_key_code(val: u32) -> PyResult<bevy::input::keyboard::KeyCode> {
             57 => KeyCode::Digit9,
             _ => unreachable!(),
         }),
-        _ => Err(PyValueError::new_err(format!(
-            "unknown key code: {val}"
-        ))),
+        _ => Err(PyValueError::new_err(format!("unknown key code: {val}"))),
     }
 }
 

@@ -1395,11 +1395,9 @@ pub extern "C" fn processing_input_mouse_button(surface_id: u64, button: u8, pre
             PROCESSING_MOUSE_MIDDLE => MouseButton::Middle,
             PROCESSING_MOUSE_RIGHT => MouseButton::Right,
             _ => {
-                return Err(
-                    ProcessingError::InvalidArgument(format!(
-                        "invalid mouse button: {button}"
-                    )),
-                );
+                return Err(ProcessingError::InvalidArgument(format!(
+                    "invalid mouse button: {button}"
+                )));
             }
         };
         input_set_mouse_button(Entity::from_bits(surface_id), btn, pressed)
@@ -1427,9 +1425,7 @@ pub extern "C" fn processing_input_char(surface_id: u64, key_code: u32, codepoin
     error::check(|| {
         let kc = key_code_from_u32(key_code)?;
         let ch = char::from_u32(codepoint).ok_or_else(|| {
-            ProcessingError::InvalidArgument(format!(
-                "invalid codepoint: {codepoint}"
-            ))
+            ProcessingError::InvalidArgument(format!("invalid codepoint: {codepoint}"))
         })?;
         input_set_char(Entity::from_bits(surface_id), kc, ch)
     });
@@ -1528,8 +1524,7 @@ pub extern "C" fn processing_key() -> u32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_key_code() -> u32 {
     error::clear_error();
-    error::check(|| input_key_code().map(|opt| opt.map(key_code_to_u32).unwrap_or(0)))
-        .unwrap_or(0)
+    error::check(|| input_key_code().map(|opt| opt.map(key_code_to_u32).unwrap_or(0))).unwrap_or(0)
 }
 
 #[unsafe(no_mangle)]
@@ -1657,9 +1652,9 @@ fn key_code_from_u32(val: u32) -> processing::prelude::error::Result<KeyCode> {
         PROCESSING_KEY_ALT_RIGHT => Ok(KeyCode::AltRight),
         PROCESSING_KEY_SUPER_RIGHT => Ok(KeyCode::SuperRight),
         PROCESSING_KEY_CONTEXT_MENU => Ok(KeyCode::ContextMenu),
-        _ => Err(ProcessingError::InvalidArgument(
-            format!("unknown key code: {val}"),
-        )),
+        _ => Err(ProcessingError::InvalidArgument(format!(
+            "unknown key code: {val}"
+        ))),
     }
 }
 
