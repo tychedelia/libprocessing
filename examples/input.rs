@@ -2,7 +2,6 @@ use processing_glfw::GlfwContext;
 
 use processing::prelude::*;
 use processing_render::render::command::DrawCommand;
-use processing_webcam::{webcam_create, webcam_destroy, webcam_image, webcam_is_connected};
 
 fn main() {
     match sketch() {
@@ -18,33 +17,41 @@ fn main() {
 }
 
 fn sketch() -> error::Result<()> {
-    let width = 640;
-    let height = 480;
-
+    let width = 400;
+    let height = 400;
     let mut glfw_ctx = GlfwContext::new(width, height)?;
     init(Config::default())?;
 
     let surface = glfw_ctx.create_surface(width, height)?;
     let graphics = graphics_create(surface, width, height, TextureFormat::Rgba16Float)?;
 
-    let webcam = webcam_create()?;
-    let mut image_entity = None;
-
     while glfw_ctx.poll_events() {
         graphics_begin_draw(graphics)?;
 
-        // Once connected, grab an image entity from the webcam stream
-        if image_entity.is_none() && webcam_is_connected(webcam)? {
-            image_entity = Some(webcam_image(webcam)?);
-        }
+        let mx = input_mouse_x(surface)?;
+        let my = input_mouse_y(surface)?;
 
-        if let Some(img) = image_entity {
-            graphics_record_command(graphics, DrawCommand::BackgroundImage(img))?;
+        graphics_record_command(
+            graphics,
+            DrawCommand::BackgroundColor(bevy::color::Color::srgb(0.15, 0.15, 0.2)),
+        )?;
+
+        graphics_record_command(
+            graphics,
+            DrawCommand::Rect {
+                x: mx - 25.0,
+                y: my - 25.0,
+                w: 50.0,
+                h: 50.0,
+                radii: [0.0; 4],
+            },
+        )?;
+
+        if input_key_is_pressed()? && input_key_is_down(KeyCode::Escape)? {
+            break;
         }
 
         graphics_end_draw(graphics)?;
     }
-
-    webcam_destroy(webcam)?;
     Ok(())
 }
