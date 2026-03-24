@@ -29,7 +29,7 @@ mod webcam;
 
 use compute::{Buffer, Compute};
 use graphics::{
-    Geometry, Graphics, Image, Light, PyBlendMode, Sampler, Topology, get_graphics,
+    Font, Geometry, Graphics, Image, Light, PyBlendMode, Sampler, Topology, get_graphics,
     get_graphics_mut,
 };
 use material::Material;
@@ -341,6 +341,8 @@ mod mewnala {
     use super::particles::AttributeFormat;
     #[pymodule_export]
     use super::particles::Particles;
+    #[pymodule_export]
+    use super::Font;
     #[pymodule_export]
     use super::Geometry;
     #[pymodule_export]
