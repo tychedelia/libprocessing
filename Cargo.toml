@@ -161,6 +161,14 @@ path = "examples/blend_modes.rs"
 name = "camera_controllers"
 path = "examples/camera_controllers.rs"
 
+[[example]]
+name = "text"
+path = "examples/text.rs"
+
+[[example]]
+name = "text_3d"
+path = "examples/text_3d.rs"
+
 [profile.wasm-release]
 inherits = "release"
 opt-level = "z"

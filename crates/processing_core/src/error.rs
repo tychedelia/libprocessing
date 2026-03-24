@@ -46,4 +46,8 @@ pub enum ProcessingError {
     MidiPortNotFound(usize),
     #[error("CUDA error: {0}")]
     CudaError(String),
+    #[error("Font not found")]
+    FontNotFound,
+    #[error("Font load error: {0}")]
+    FontLoadError(String),
 }

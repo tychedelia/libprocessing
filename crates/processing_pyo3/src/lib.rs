@@ -26,7 +26,7 @@ mod time;
 mod webcam;
 
 use graphics::{
-    Geometry, Graphics, Image, Light, PyBlendMode, Sampler, Topology, get_graphics,
+    Font, Geometry, Graphics, Image, Light, PyBlendMode, Sampler, Topology, get_graphics,
     get_graphics_mut,
 };
 use material::Material;
@@ -326,6 +326,8 @@ fn detect_environment(py: Python<'_>) -> PyResult<String> {
 mod mewnala {
     use super::*;
 
+    #[pymodule_export]
+    use super::Font;
     #[pymodule_export]
     use super::Geometry;
     #[pymodule_export]
