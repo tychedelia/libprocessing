@@ -239,6 +239,7 @@ pub fn create(
         render_layer,
         CommandBuffer::new(),
         RenderState::default(),
+        crate::color::ColorMode::default(),
         SurfaceSize(width, height),
         Graphics {
             readback_buffer,
