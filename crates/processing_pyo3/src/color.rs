@@ -4,7 +4,7 @@ use bevy::color::{
 };
 use pyo3::{exceptions::PyTypeError, prelude::*, types::PyTuple};
 
-use crate::math::{PyVec4, PyVecIter, hash_f32, PyVec3};
+use crate::math::{PyVec3, PyVec4, PyVecIter, hash_f32};
 
 pub use processing::prelude::color::{ColorMode, ColorSpace};
 
@@ -21,7 +21,11 @@ fn int_maxes(space: &ColorSpace) -> [f32; 4] {
 }
 
 /// Parse a Python int or float into an f32 for a given channel.
-pub(crate) fn parse_numeric(space: &ColorSpace, obj: &Bound<'_, PyAny>, ch: usize) -> PyResult<f32> {
+pub(crate) fn parse_numeric(
+    space: &ColorSpace,
+    obj: &Bound<'_, PyAny>,
+    ch: usize,
+) -> PyResult<f32> {
     if let Ok(v) = obj.extract::<i64>() {
         let native = space.default_maxes();
         let imax = int_maxes(space);
@@ -61,25 +65,25 @@ pub(crate) fn extract_color_with_mode(
             if let Ok(v) = first.extract::<PyRef<PyVec3>>() {
                 return Ok(space.color(v.0.x, v.0.y, v.0.z, native[3]));
             }
-            let v = convert_channel(mode,&first, 0)?;
+            let v = convert_channel(mode, &first, 0)?;
             Ok(space.gray(v, native[3]))
         }
         2 => {
-            let v = convert_channel(mode,&args.get_item(0)?, 0)?;
-            let a = convert_channel(mode,&args.get_item(1)?, 3)?;
+            let v = convert_channel(mode, &args.get_item(0)?, 0)?;
+            let a = convert_channel(mode, &args.get_item(1)?, 3)?;
             Ok(space.gray(v, a))
         }
         3 => {
-            let c1 = convert_channel(mode,&args.get_item(0)?, 0)?;
-            let c2 = convert_channel(mode,&args.get_item(1)?, 1)?;
-            let c3 = convert_channel(mode,&args.get_item(2)?, 2)?;
+            let c1 = convert_channel(mode, &args.get_item(0)?, 0)?;
+            let c2 = convert_channel(mode, &args.get_item(1)?, 1)?;
+            let c3 = convert_channel(mode, &args.get_item(2)?, 2)?;
             Ok(space.color(c1, c2, c3, native[3]))
         }
         4 => {
-            let c1 = convert_channel(mode,&args.get_item(0)?, 0)?;
-            let c2 = convert_channel(mode,&args.get_item(1)?, 1)?;
-            let c3 = convert_channel(mode,&args.get_item(2)?, 2)?;
-            let ca = convert_channel(mode,&args.get_item(3)?, 3)?;
+            let c1 = convert_channel(mode, &args.get_item(0)?, 0)?;
+            let c2 = convert_channel(mode, &args.get_item(1)?, 1)?;
+            let c3 = convert_channel(mode, &args.get_item(2)?, 2)?;
+            let ca = convert_channel(mode, &args.get_item(3)?, 3)?;
             Ok(space.color(c1, c2, c3, ca))
         }
         _ => Err(PyTypeError::new_err("expected 1-4 arguments")),
@@ -455,7 +459,6 @@ impl ColorLike {
     }
 }
 
-
 fn parse_hex(s: &str) -> PyResult<Color> {
     Srgba::hex(s)
         .map(Color::Srgba)
@@ -582,5 +585,4 @@ mod tests {
         assert!((list[0] - 0.1).abs() < 1e-6);
         assert!((list[3] - 0.4).abs() < 1e-6);
     }
-
 }

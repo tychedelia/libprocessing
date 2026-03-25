@@ -263,10 +263,11 @@ pub extern "C" fn processing_color_mode(
     error::clear_error();
     let graphics_entity = Entity::from_bits(graphics_id);
     error::check(|| {
-        let space = processing::prelude::color::ColorSpace::from_u8(space)
-            .ok_or_else(|| processing::prelude::error::ProcessingError::InvalidArgument(
-                format!("unknown color space: {space}"),
-            ))?;
+        let space = processing::prelude::color::ColorSpace::from_u8(space).ok_or_else(|| {
+            processing::prelude::error::ProcessingError::InvalidArgument(format!(
+                "unknown color space: {space}"
+            ))
+        })?;
         let mode = processing::prelude::color::ColorMode::new(space, max1, max2, max3, max_alpha);
         graphics_set_color_mode(graphics_entity, mode)
     });
@@ -298,7 +299,10 @@ pub extern "C" fn processing_set_stroke_color(graphics_id: u64, color: Color) {
     let graphics_entity = Entity::from_bits(graphics_id);
     error::check(|| {
         let mode = graphics_get_color_mode(graphics_entity)?;
-        graphics_record_command(graphics_entity, DrawCommand::StrokeColor(color.resolve(&mode)))
+        graphics_record_command(
+            graphics_entity,
+            DrawCommand::StrokeColor(color.resolve(&mode)),
+        )
     });
 }
 
@@ -1206,7 +1210,13 @@ pub extern "C" fn processing_light_create_point(
     let graphics_entity = Entity::from_bits(graphics_id);
     error::check(|| {
         let mode = graphics_get_color_mode(graphics_entity)?;
-        light_create_point(graphics_entity, color.resolve(&mode), intensity, range, radius)
+        light_create_point(
+            graphics_entity,
+            color.resolve(&mode),
+            intensity,
+            range,
+            radius,
+        )
     })
     .map(|e| e.to_bits())
     .unwrap_or(0)

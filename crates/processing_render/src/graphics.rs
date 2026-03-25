@@ -137,8 +137,8 @@ impl CameraProjection for ProcessingProjection {
             self.width,
             self.height, // bottom = height
             0.0,         // top = 0
-            self.near,
             self.far,
+            self.near,
         )
     }
 

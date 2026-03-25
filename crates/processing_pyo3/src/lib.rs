@@ -757,8 +757,8 @@ mod mewnala {
         max3: Option<&Bound<'py, PyAny>>,
         max_alpha: Option<&Bound<'py, PyAny>>,
     ) -> PyResult<()> {
-        let graphics = get_graphics(module)?
-            .ok_or_else(|| PyRuntimeError::new_err("call size() first"))?;
+        let graphics =
+            get_graphics(module)?.ok_or_else(|| PyRuntimeError::new_err("call size() first"))?;
         graphics.set_color_mode(mode, max1, max2, max3, max_alpha)
     }
 

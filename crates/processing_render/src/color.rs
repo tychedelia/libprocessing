@@ -1,6 +1,4 @@
-use bevy::color::{
-    Color, Hsla, Hsva, Hwba, Laba, Lcha, LinearRgba, Oklaba, Oklcha, Srgba, Xyza,
-};
+use bevy::color::{Color, Hsla, Hsva, Hwba, Laba, Lcha, LinearRgba, Oklaba, Oklcha, Srgba, Xyza};
 use bevy::prelude::Component;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,7 +107,6 @@ impl ColorMode {
         let native = self.space.default_maxes();
         value / self.max[ch] * native[ch]
     }
-
 }
 
 #[cfg(test)]
@@ -170,7 +167,6 @@ mod tests {
         let mode = ColorMode::with_uniform_max(ColorSpace::Srgb, 255.0);
         assert!((mode.scale(255.0, 0) - 1.0).abs() < 1e-4);
     }
-
 
     #[test]
     fn test_scale_hsl_percent() {
