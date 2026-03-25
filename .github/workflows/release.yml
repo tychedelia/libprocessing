@@ -52,9 +52,12 @@ jobs:
           args: --release --out dist --find-interpreter
           manylinux: 2_28
           before-script-linux: |
-            dnf install -y cmake gcc-c++ \
-              libX11-devel libXrandr-devel libXinerama-devel libXcursor-devel libXi-devel \
-              wayland-devel libxkbcommon-devel
+            apt-get update && apt-get install -y cmake g++ \
+              pkg-config libasound2-dev libudev-dev libxkbcommon-x11-0 \
+              libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+              libxkbregistry-dev libwayland-client0 libwayland-server0 libwayland-cursor0 \
+              libwayland-dev libxkbcommon-dev \
+              wayland-protocols
           working-directory: crates/processing_pyo3
       - uses: actions/upload-artifact@v4
         with:

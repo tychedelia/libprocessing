@@ -300,9 +300,9 @@ impl Graphics {
         }
     }
 
-    pub fn background(&self, args: Vec<f32>) -> PyResult<()> {
-        let (r, g, b, a) = parse_color(&args)?;
-        let color = bevy::color::Color::srgba(r, g, b, a);
+    #[pyo3(signature = (*args))]
+    pub fn background(&self, args: &Bound<'_, PyTuple>) -> PyResult<()> {
+        let color = crate::color::extract_color(args)?;
         graphics_record_command(self.entity, DrawCommand::BackgroundColor(color))
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
@@ -312,9 +312,9 @@ impl Graphics {
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    pub fn fill(&self, args: Vec<f32>) -> PyResult<()> {
-        let (r, g, b, a) = parse_color(&args)?;
-        let color = bevy::color::Color::srgba(r, g, b, a);
+    #[pyo3(signature = (*args))]
+    pub fn fill(&self, args: &Bound<'_, PyTuple>) -> PyResult<()> {
+        let color = crate::color::extract_color(args)?;
         graphics_record_command(self.entity, DrawCommand::Fill(color))
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
@@ -324,9 +324,9 @@ impl Graphics {
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    pub fn stroke(&self, args: Vec<f32>) -> PyResult<()> {
-        let (r, g, b, a) = parse_color(&args)?;
-        let color = bevy::color::Color::srgba(r, g, b, a);
+    #[pyo3(signature = (*args))]
+    pub fn stroke(&self, args: &Bound<'_, PyTuple>) -> PyResult<()> {
+        let color = crate::color::extract_color(args)?;
         graphics_record_command(self.entity, DrawCommand::StrokeColor(color))
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
@@ -449,9 +449,9 @@ impl Graphics {
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    pub fn emissive(&self, args: Vec<f32>) -> PyResult<()> {
-        let (r, g, b, a) = parse_color(&args)?;
-        let color = bevy::color::Color::srgba(r, g, b, a);
+    #[pyo3(signature = (*args))]
+    pub fn emissive(&self, args: &Bound<'_, PyTuple>) -> PyResult<()> {
+        let color = crate::color::extract_color(args)?;
         graphics_record_command(self.entity, DrawCommand::Emissive(color))
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
@@ -551,8 +551,12 @@ impl Graphics {
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    pub fn light_directional(&self, r: f32, g: f32, b: f32, illuminance: f32) -> PyResult<Light> {
-        let color = bevy::color::Color::srgb(r, g, b);
+    pub fn light_directional(
+        &self,
+        color: crate::color::ColorLike,
+        illuminance: f32,
+    ) -> PyResult<Light> {
+        let color = color.into_color()?;
         match light_create_directional(self.entity, color, illuminance) {
             Ok(light) => Ok(Light { entity: light }),
             Err(e) => Err(PyRuntimeError::new_err(format!("{e}"))),
@@ -561,14 +565,12 @@ impl Graphics {
 
     pub fn light_point(
         &self,
-        r: f32,
-        g: f32,
-        b: f32,
+        color: crate::color::ColorLike,
         intensity: f32,
         range: f32,
         radius: f32,
     ) -> PyResult<Light> {
-        let color = bevy::color::Color::srgb(r, g, b);
+        let color = color.into_color()?;
         match light_create_point(self.entity, color, intensity, range, radius) {
             Ok(light) => Ok(Light { entity: light }),
             Err(e) => Err(PyRuntimeError::new_err(format!("{e}"))),
@@ -637,16 +639,14 @@ impl Graphics {
 
     pub fn light_spot(
         &self,
-        r: f32,
-        g: f32,
-        b: f32,
+        color: crate::color::ColorLike,
         intensity: f32,
         range: f32,
         radius: f32,
         inner_angle: f32,
         outer_angle: f32,
     ) -> PyResult<Light> {
-        let color = bevy::color::Color::srgb(r, g, b);
+        let color = color.into_color()?;
         match light_create_spot(
             self.entity,
             color,
@@ -659,29 +659,6 @@ impl Graphics {
             Ok(light) => Ok(Light { entity: light }),
             Err(e) => Err(PyRuntimeError::new_err(format!("{e}"))),
         }
-    }
-}
-
-// TODO: a real color type. or color parser? idk. color is confusing. let's think
-// about how to expose different color spaces in an idiomatic pythonic way
-fn parse_color(args: &[f32]) -> PyResult<(f32, f32, f32, f32)> {
-    match args.len() {
-        1 => {
-            let v = args[0] / 255.0;
-            Ok((v, v, v, 1.0))
-        }
-        2 => {
-            let v = args[0] / 255.0;
-            Ok((v, v, v, args[1] / 255.0))
-        }
-        3 => Ok((args[0] / 255.0, args[1] / 255.0, args[2] / 255.0, 1.0)),
-        4 => Ok((
-            args[0] / 255.0,
-            args[1] / 255.0,
-            args[2] / 255.0,
-            args[3] / 255.0,
-        )),
-        _ => Err(PyRuntimeError::new_err("color requires 1-4 arguments")),
     }
 }
 
