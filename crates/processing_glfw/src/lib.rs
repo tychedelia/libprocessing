@@ -22,6 +22,10 @@ impl GlfwContext {
 
         glfw.window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::NoApi));
         glfw.window_hint(glfw::WindowHint::Visible(false));
+        // GLFW on Windows with per-monitor DPI V2 uses physical pixels for window
+        // sizes. Scale up so that size(w, h) means w×h logical screen coordinates,
+        // matching Processing4's convention.
+        glfw.window_hint(glfw::WindowHint::ScaleToMonitor(true));
 
         let (mut window, events) = glfw
             .create_window(width, height, "Processing", WindowMode::Windowed)
@@ -42,13 +46,14 @@ impl GlfwContext {
     }
 
     #[cfg(target_os = "macos")]
-    pub fn create_surface(&mut self, width: u32, height: u32) -> Result<Entity> {
+    pub fn create_surface(&mut self, _width: u32, _height: u32) -> Result<Entity> {
         use processing_render::surface_create_macos;
+        let (fb_w, fb_h) = self.window.get_framebuffer_size();
         let (scale_factor, _) = self.window.get_content_scale();
         let entity = surface_create_macos(
             self.window.get_cocoa_window() as u64,
-            width,
-            height,
+            fb_w as u32,
+            fb_h as u32,
             scale_factor,
         )?;
         self.surface = Some(entity);
@@ -56,13 +61,14 @@ impl GlfwContext {
     }
 
     #[cfg(target_os = "windows")]
-    pub fn create_surface(&mut self, width: u32, height: u32) -> Result<Entity> {
+    pub fn create_surface(&mut self, _width: u32, _height: u32) -> Result<Entity> {
         use processing_render::surface_create_windows;
+        let (fb_w, fb_h) = self.window.get_framebuffer_size();
         let (scale_factor, _) = self.window.get_content_scale();
         let entity = surface_create_windows(
             self.window.get_win32_window() as u64,
-            width,
-            height,
+            fb_w as u32,
+            fb_h as u32,
             scale_factor,
         )?;
         self.surface = Some(entity);
@@ -70,14 +76,15 @@ impl GlfwContext {
     }
 
     #[cfg(all(target_os = "linux", feature = "wayland"))]
-    pub fn create_surface(&mut self, width: u32, height: u32) -> Result<Entity> {
+    pub fn create_surface(&mut self, _width: u32, _height: u32) -> Result<Entity> {
         use processing_render::surface_create_wayland;
+        let (fb_w, fb_h) = self.window.get_framebuffer_size();
         let (scale_factor, _) = self.window.get_content_scale();
         let entity = surface_create_wayland(
             self.window.get_wayland_window() as u64,
             self.glfw.get_wayland_display() as u64,
-            width,
-            height,
+            fb_w as u32,
+            fb_h as u32,
             scale_factor,
         )?;
         self.surface = Some(entity);
@@ -85,14 +92,15 @@ impl GlfwContext {
     }
 
     #[cfg(all(target_os = "linux", feature = "x11"))]
-    pub fn create_surface(&mut self, width: u32, height: u32) -> Result<Entity> {
+    pub fn create_surface(&mut self, _width: u32, _height: u32) -> Result<Entity> {
         use processing_render::surface_create_x11;
+        let (fb_w, fb_h) = self.window.get_framebuffer_size();
         let (scale_factor, _) = self.window.get_content_scale();
         let entity = surface_create_x11(
             self.window.get_x11_window() as u64,
             self.glfw.get_x11_display() as u64,
-            width,
-            height,
+            fb_w as u32,
+            fb_h as u32,
             scale_factor,
         )?;
         self.surface = Some(entity);
