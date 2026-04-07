@@ -24,7 +24,7 @@ too_many_arguments = "allow"
 [workspace.dependencies]
 bevy = { git = "https://github.com/bevyengine/bevy", branch = "main", features = ["file_watcher", "shader_format_wesl", "free_camera", "pan_camera"] }
 bevy_naga_reflect = { git = "https://github.com/tychedelia/bevy_naga_reflect" }
-naga = { version = "28", features = ["wgsl-in"] }
+naga = { version = "29", features = ["wgsl-in"] }
 wesl = { version = "0.3", default-features = false }
 pyo3 = { git = "https://github.com/PyO3/pyo3", branch = "main" }
 pyo3-introspection = { git = "https://github.com/PyO3/pyo3", branch = "main" }

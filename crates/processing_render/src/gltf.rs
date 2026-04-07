@@ -10,7 +10,7 @@ use bevy::{
     ecs::system::RunSystemOnce,
     gltf::{Gltf, GltfMeshName},
     prelude::*,
-    scene::SceneSpawner,
+    world_serialization::WorldInstanceSpawner,
 };
 
 use crate::geometry::{BuiltinAttributes, Geometry, layout::VertexLayout};
@@ -65,7 +65,7 @@ fn compute_global_transform(world: &World, entity: Entity) -> Transform {
 #[derive(Component)]
 pub struct GltfHandle {
     handle: Handle<Gltf>,
-    instance_id: bevy::scene::InstanceId,
+    instance_id: bevy::world_serialization::InstanceId,
     graphics_entity: Entity,
     base_path: String,
 }
@@ -96,7 +96,7 @@ pub fn load(
 
     // we spawn the scene in to the world in a blocking fashion so that bevy runs all
     // its hooks for the gltf, ex creating standard material instances
-    let instance_id = world.resource_scope(|world, mut spawner: Mut<SceneSpawner>| {
+    let instance_id = world.resource_scope(|world, mut spawner: Mut<WorldInstanceSpawner>| {
         spawner
             .spawn_sync(world, &scene_handle)
             .map_err(|e| ProcessingError::GltfLoadError(format!("Scene spawn failed: {e}")))
@@ -105,7 +105,7 @@ pub fn load(
     // we have to remove the existing cameras from the scene -- the user can request to set *this*
     // graphics to a camera, but the scenes cameras should not exist
     {
-        let spawner = world.resource::<SceneSpawner>();
+        let spawner = world.resource::<WorldInstanceSpawner>();
         let cam_entities: Vec<Entity> = spawner
             .iter_instance_entities(instance_id)
             .filter(|&e| world.get::<Camera>(e).is_some())
@@ -138,7 +138,7 @@ pub fn geometry(
     let instance_id = gltf_handle.instance_id;
 
     let (mesh_handle, global_transform) = {
-        let spawner = world.resource::<SceneSpawner>();
+        let spawner = world.resource::<WorldInstanceSpawner>();
 
         // find the mesh with the given name component that bevy added post-spawn
         // name is derived from gltf node or computed
@@ -254,7 +254,7 @@ pub fn camera(In((gltf_entity, index)): In<(Entity, usize)>, world: &mut World) 
     let graphics_entity = gltf_handle.graphics_entity;
 
     let (projection, node_xform) = {
-        let spawner = world.resource::<SceneSpawner>();
+        let spawner = world.resource::<WorldInstanceSpawner>();
         let camera_entity = spawner
             .iter_instance_entities(instance_id)
             .filter(|&e| world.get::<Camera3d>(e).is_some())
@@ -320,7 +320,7 @@ pub fn light(In((gltf_entity, index)): In<(Entity, usize)>, world: &mut World) -
     let graphics_entity = gltf_handle.graphics_entity;
 
     let light_entities: Vec<Entity> = {
-        let spawner = world.resource::<SceneSpawner>();
+        let spawner = world.resource::<WorldInstanceSpawner>();
         spawner
             .iter_instance_entities(instance_id)
             .filter(|&e| {

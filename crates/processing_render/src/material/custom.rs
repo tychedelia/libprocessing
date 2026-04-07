@@ -41,6 +41,7 @@ use bevy::{
             BindGroupLayoutDescriptor, BindingResources, BlendState, UnpreparedBindGroup,
         },
         renderer::RenderDevice,
+        storage::GpuShaderBuffer,
         sync_world::MainEntity,
         texture::GpuImage,
     },
@@ -380,6 +381,7 @@ impl ErasedRenderAsset for CustomMaterial {
         SResMut<MaterialBindGroupAllocators>,
         SResMut<RenderMaterialBindings>,
         SRes<RenderAssets<GpuImage>>,
+        SRes<RenderAssets<GpuShaderBuffer>>,
     );
 
     fn prepare_asset(
@@ -392,6 +394,7 @@ impl ErasedRenderAsset for CustomMaterial {
             bind_group_allocators,
             render_material_bindings,
             gpu_images,
+            gpu_buffers,
         ): &mut SystemParamItem<Self::Param>,
     ) -> std::result::Result<Self::ErasedAsset, PrepareAssetError<Self::SourceAsset>> {
         let reflection = source_asset.shader.reflection();
@@ -401,7 +404,7 @@ impl ErasedRenderAsset for CustomMaterial {
             BindGroupLayoutDescriptor::new("custom_material_bind_group", &layout_entries);
 
         let bindings =
-            reflection.create_bindings(3, &source_asset.shader, render_device, gpu_images);
+            reflection.create_bindings(3, &source_asset.shader, render_device, gpu_images, gpu_buffers);
 
         let unprepared = UnpreparedBindGroup {
             bindings: BindingResources(bindings),
