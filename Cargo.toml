@@ -12,6 +12,7 @@ default = ["wayland", "x11"]
 wayland = ["processing_render/wayland"]
 x11 = ["processing_render/x11"]
 webcam = ["dep:processing_webcam"]
+video = ["dep:processing_video"]
 cuda = ["dep:processing_cuda", "processing_cuda/cuda"]
 
 [workspace]
@@ -68,6 +69,7 @@ processing_midi = { path = "crates/processing_midi" }
 processing_audio = { path = "crates/processing_audio" }
 processing_input = { path = "crates/processing_input" }
 processing_glfw = { path = "crates/processing_glfw" }
+processing_video = { path = "crates/processing_video" }
 processing_webcam = { path = "crates/processing_webcam" }
 rand = "0.10"
 rand_distr = "0.6"
@@ -79,6 +81,7 @@ processing_render = { workspace = true }
 processing_midi = { workspace = true }
 processing_audio = { workspace = true }
 processing_input = { workspace = true }
+processing_video = { workspace = true, optional = true }
 processing_webcam = { workspace = true, optional = true }
 processing_cuda = { workspace = true, optional = true }
 tracing = "0.1"
@@ -162,6 +165,11 @@ path = "examples/midi.rs"
 [[example]]
 name = "gltf_load"
 path = "examples/gltf_load.rs"
+
+[[example]]
+name = "video"
+path = "examples/video.rs"
+required-features = ["video"]
 
 [[example]]
 name = "webcam"

@@ -1,0 +1,13 @@
+[package]
+name = "processing_video"
+version = "0.0.1"
+edition = "2024"
+
+[lints]
+workspace = true
+
+[dependencies]
+bevy = { workspace = true }
+nannou_video = { path = "../../../../nannou-org/nannou/nannou_video" }
+processing_core = { workspace = true }
+processing_render = { workspace = true }

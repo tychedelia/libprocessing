@@ -67,6 +67,9 @@ fn create_app(config: Config) -> App {
     #[cfg(feature = "cuda")]
     app.add_plugins(processing_cuda::CudaPlugin);
 
+    #[cfg(feature = "video")]
+    app.add_plugins(processing_video::NannouVideoPlugin);
+
     #[cfg(feature = "webcam")]
     app.add_plugins(processing_webcam::WebcamPlugin);
 

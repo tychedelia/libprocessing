@@ -26,6 +26,8 @@ pub(crate) mod particles;
 pub(crate) mod shader;
 mod surface;
 mod time;
+#[cfg(feature = "video")]
+mod video;
 #[cfg(feature = "webcam")]
 mod webcam;
 
@@ -566,6 +568,9 @@ mod mewnala {
         PyColor::xyz(x, y, z, a)
     }
 
+    #[cfg(feature = "video")]
+    #[pymodule_export]
+    use super::video::Video;
     #[cfg(feature = "webcam")]
     #[pymodule_export]
     use super::webcam::Webcam;
@@ -929,6 +934,7 @@ mod mewnala {
                     }
                 }
 
+                sync_globals(module, &globals)?;
                 dispatch_event_callbacks(&locals)?;
 
                 let should_draw = first_frame
@@ -2225,6 +2231,13 @@ mod mewnala {
     #[pyo3(pass_module)]
     fn draw_tetrahedron(module: &Bound<'_, PyModule>, radius: f32) -> PyResult<()> {
         graphics!(module).draw_tetrahedron(radius)
+    }
+
+    #[cfg(feature = "video")]
+    #[pyfunction]
+    #[pyo3(signature = (path, looping=false))]
+    fn create_video(path: &str, looping: bool) -> PyResult<video::Video> {
+        video::Video::new(path, looping)
     }
 
     #[cfg(feature = "webcam")]

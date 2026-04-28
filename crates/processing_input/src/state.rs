@@ -60,7 +60,9 @@ pub fn track_last_key(mut reader: MessageReader<KeyboardInput>, mut last: ResMut
     for event in reader.read() {
         match event.state {
             ButtonState::Pressed => {
-                last.code = Some(event.key_code);
+                if !matches!(event.key_code, KeyCode::Unidentified(_)) {
+                    last.code = Some(event.key_code);
+                }
                 last.character = event.text.as_ref().and_then(|t| t.chars().next());
                 last.just_pressed = true;
             }
