@@ -1096,6 +1096,15 @@ impl Graphics {
 
     #[pyo3(signature = (*args))]
     pub fn background(&self, args: &Bound<'_, PyTuple>) -> PyResult<()> {
+        if let Ok(first) = args.get_item(0) {
+            if let Ok(img_ref) = first.extract::<ImageRef>() {
+                return graphics_record_command(
+                    self.entity,
+                    DrawCommand::BackgroundImage(img_ref.entity),
+                )
+                .map_err(|e| PyRuntimeError::new_err(format!("{e}")));
+            }
+        }
         let color = extract_color_with_mode(
             args,
             &graphics_get_color_mode(self.entity)

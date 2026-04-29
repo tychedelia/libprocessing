@@ -6,11 +6,15 @@ use processing_video::{
 };
 use pyo3::{exceptions::PyRuntimeError, prelude::*};
 
-use crate::graphics::Image;
-
 #[pyclass(unsendable)]
 pub struct Video {
     entity: Entity,
+}
+
+impl Video {
+    pub(crate) fn image_entity(&self) -> PyResult<Entity> {
+        video_image(self.entity).map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    }
 }
 
 #[pymethods]
@@ -28,12 +32,6 @@ impl Video {
 
     pub fn resolution(&self) -> PyResult<(u32, u32)> {
         video_resolution(self.entity).map_err(|e| PyRuntimeError::new_err(format!("{e}")))
-    }
-
-    pub fn image(&self) -> PyResult<Image> {
-        let entity =
-            video_image(self.entity).map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
-        Ok(Image::from_entity(entity))
     }
 
     pub fn position(&self) -> PyResult<f64> {
