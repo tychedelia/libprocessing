@@ -2235,9 +2235,8 @@ mod mewnala {
 
     #[cfg(feature = "video")]
     #[pyfunction]
-    #[pyo3(signature = (path, looping=false))]
-    fn create_video(path: &str, looping: bool) -> PyResult<video::Video> {
-        video::Video::new(path, looping)
+    fn create_video(path: &str) -> PyResult<video::Video> {
+        video::Video::new(path)
     }
 
     #[cfg(feature = "webcam")]

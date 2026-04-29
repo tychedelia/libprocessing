@@ -92,6 +92,17 @@ fn set_speed(
     Ok(())
 }
 
+fn set_mode(
+    In((entity, mode)): In<(Entity, PlaybackMode)>,
+    mut players: Query<&mut VideoPlayer>,
+) -> Result<()> {
+    let mut player = players
+        .get_mut(entity)
+        .map_err(|_| ProcessingError::VideoNotLoaded)?;
+    player.mode = mode;
+    Ok(())
+}
+
 fn destroy(In(entity): In<Entity>, mut commands: Commands) -> Result<()> {
     commands.entity(entity).despawn();
     Ok(())
@@ -182,6 +193,14 @@ pub fn video_set_speed(entity: Entity, speed: f32) -> Result<()> {
     app_mut(|app| {
         app.world_mut()
             .run_system_cached_with(set_speed, (entity, speed))
+            .unwrap()
+    })
+}
+
+pub fn video_set_mode(entity: Entity, mode: PlaybackMode) -> Result<()> {
+    app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(set_mode, (entity, mode))
             .unwrap()
     })
 }
