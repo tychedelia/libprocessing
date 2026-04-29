@@ -8,6 +8,6 @@ workspace = true
 
 [dependencies]
 bevy = { workspace = true }
-nannou_video = { path = "../../../../nannou-org/nannou/nannou_video" }
+nannou_video = { git = "https://github.com/nannou-org/nannou", branch = "bevy-refactor" }
 processing_core = { workspace = true }
 processing_render = { workspace = true }
