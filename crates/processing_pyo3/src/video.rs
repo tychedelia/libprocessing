@@ -18,8 +18,7 @@ impl Video {
     #[new]
     pub fn new(path: &str) -> PyResult<Self> {
         let handle = video_load(path).map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
-        let entity =
-            video_create(handle).map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        let entity = video_create(handle).map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
         Ok(Self { entity })
     }
 
@@ -48,8 +47,7 @@ impl Video {
     pub fn play(&self) -> PyResult<()> {
         video_set_mode(self.entity, PlaybackMode::Once)
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
-        video_set_paused(self.entity, false)
-            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+        video_set_paused(self.entity, false).map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
     pub fn pause(&self) -> PyResult<()> {
@@ -60,8 +58,7 @@ impl Video {
     pub fn loop_(&self) -> PyResult<()> {
         video_set_mode(self.entity, PlaybackMode::Loop)
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
-        video_set_paused(self.entity, false)
-            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+        video_set_paused(self.entity, false).map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
     pub fn no_loop(&self) -> PyResult<()> {

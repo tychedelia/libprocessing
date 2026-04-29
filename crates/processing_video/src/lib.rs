@@ -27,10 +27,7 @@ fn create_with_mode(
     mut commands: Commands,
 ) -> Entity {
     commands
-        .spawn((
-            ProcessingVideo,
-            VideoPlayer::new(handle).with_mode(mode),
-        ))
+        .spawn((ProcessingVideo, VideoPlayer::new(handle).with_mode(mode)))
         .id()
 }
 
@@ -111,13 +108,12 @@ fn destroy(In(entity): In<Entity>, mut commands: Commands) -> Result<()> {
 pub fn video_load(path: &str) -> Result<Handle<Video>> {
     app_mut(|app| {
         let config = app.world().resource::<processing_core::config::Config>();
-        let asset_path: AssetPath = match config.get(processing_core::config::ConfigKey::AssetRootPath) {
-            Some(_) => {
-                AssetPath::from_path_buf(path.into())
-                    .with_source(AssetSourceId::from("assets_directory"))
-            }
-            None => AssetPath::from_path_buf(path.into()),
-        };
+        let asset_path: AssetPath =
+            match config.get(processing_core::config::ConfigKey::AssetRootPath) {
+                Some(_) => AssetPath::from_path_buf(path.into())
+                    .with_source(AssetSourceId::from("assets_directory")),
+                None => AssetPath::from_path_buf(path.into()),
+            };
         let asset_server = app.world().resource::<AssetServer>();
         Ok(asset_server.load(asset_path))
     })
