@@ -537,6 +537,12 @@ impl<'a, 'py> FromPyObject<'a, 'py> for ImageRef {
         if let Ok(img) = ob.extract::<PyRef<Image>>() {
             return Ok(ImageRef { entity: img.entity });
         }
+        #[cfg(feature = "video")]
+        if let Ok(vid) = ob.extract::<PyRef<crate::video::Video>>() {
+            return Ok(ImageRef {
+                entity: vid.image_entity()?,
+            });
+        }
         #[cfg(feature = "webcam")]
         if let Ok(cam) = ob.extract::<PyRef<crate::webcam::Webcam>>() {
             return Ok(ImageRef {
@@ -544,7 +550,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for ImageRef {
             });
         }
         Err(pyo3::exceptions::PyTypeError::new_err(
-            "expected an Image or Webcam",
+            "expected an Image, Video, or Webcam",
         ))
     }
 }
@@ -2166,6 +2172,21 @@ impl Graphics {
                 .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?,
         )?;
         graphics_record_command(self.entity, DrawCommand::Emissive(color))
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    }
+
+    pub fn texture(&self, source: ImageRef) -> PyResult<()> {
+        graphics_record_command(self.entity, DrawCommand::Texture(source.entity))
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    }
+
+    pub fn no_texture(&self) -> PyResult<()> {
+        graphics_record_command(self.entity, DrawCommand::NoTexture)
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    }
+
+    pub fn texture_transform(&self, transform: crate::math::PyAffine2) -> PyResult<()> {
+        graphics_record_command(self.entity, DrawCommand::TextureTransform(transform.0))
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
