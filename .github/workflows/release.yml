@@ -8,6 +8,9 @@ on:
 permissions:
   contents: read
 
+env:
+  FFMPEG_VERSION: "7.1.1"
+
 jobs:
   generate-stubs:
     runs-on: ubuntu-22.04
@@ -16,9 +19,18 @@ jobs:
         with:
           submodules: true
       - uses: ./.github/actions/setup
+      - name: Build FFmpeg
+        run: |
+          sudo apt-get install -y nasm pkg-config
+          curl -L https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz | tar xJ
+          cd ffmpeg-${{ env.FFMPEG_VERSION }}
+          ./configure --prefix=/usr/local --libdir=/usr/local/lib --enable-shared --disable-static --disable-programs --disable-doc
+          make -j$(nproc)
+          sudo make install
+          sudo ldconfig
       - name: Generate type stubs
         run: |
-          cargo build --release -p processing_pyo3
+          cargo build --release -p processing_pyo3 --features video
           cargo run --release -p generate_stubs
       - uses: actions/upload-artifact@v4
         with:
@@ -31,7 +43,7 @@ jobs:
     strategy:
       matrix:
         # TODO: add aarch64 when we are ready to address long build times
-        target: [x86_64] 
+        target: [x86_64]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,7 +64,7 @@ jobs:
           container: "quay.io/pypa/manylinux_2_34_${{matrix.target}}:latest"
           docker-options: "-e PKG_CONFIG_PATH=/usr/lib64/pkgconfig:/usr/lib/${{matrix.target}}-linux-gnu/pkgconfig:/usr/local/lib/pkgconfig"
           target: ${{ matrix.target }}
-          args: --release --out dist --find-interpreter
+          args: --release --out dist --find-interpreter --features video
           manylinux: 2_34
           before-script-linux: |
             EXTRA_PACKAGES=""
@@ -60,11 +72,18 @@ jobs:
               EXTRA_PACKAGES="gcc-aarch64-linux-gnu"
             fi
 
-            dnf -y install cmake gcc-c++ \
+            dnf -y install cmake gcc-c++ nasm \
                 pkgconfig alsa-lib-devel systemd-devel \
                 libX11-devel libXrandr-devel libXinerama-devel libXcursor-devel libXi-devel \
                 libxkbcommon-devel wayland-devel wayland-protocols-devel \
                 glfw-devel $EXTRA_PACKAGES
+
+            curl -L https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz | tar xJ
+            cd ffmpeg-${{ env.FFMPEG_VERSION }}
+            ./configure --prefix=/usr/local --libdir=/usr/local/lib --enable-shared --disable-static --disable-programs --disable-doc
+            make -j$(nproc)
+            make install
+            ldconfig
           working-directory: crates/processing_pyo3
       - uses: actions/upload-artifact@v4
         with:
@@ -92,12 +111,26 @@ jobs:
         with:
           name: type-stubs
           path: crates/processing_pyo3/mewnala
+      - name: Build FFmpeg (LGPL, shared)
+        run: |
+          brew install nasm pkg-config
+          curl -L https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz | tar xJ
+          cd ffmpeg-${{ env.FFMPEG_VERSION }}
+          ./configure --prefix=/usr/local --libdir=/usr/local/lib --enable-shared --disable-static --disable-programs --disable-doc
+          make -j$(sysctl -n hw.ncpu)
+          sudo make install
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist --find-interpreter
+          args: --release --out dist --find-interpreter --features video
           working-directory: crates/processing_pyo3
+      - name: Bundle dylibs into wheels
+        run: |
+          pip install delocate
+          delocate-wheel -w dist-fixed crates/processing_pyo3/dist/*.whl
+          rm -rf crates/processing_pyo3/dist
+          mv dist-fixed crates/processing_pyo3/dist
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-macos-${{ matrix.target }}
@@ -117,12 +150,29 @@ jobs:
         with:
           name: type-stubs
           path: crates/processing_pyo3/mewnala
+      - name: Install FFmpeg
+        shell: bash
+        run: |
+          curl -L -o ffmpeg.zip "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n7.1-latest-win64-lgpl-shared-7.1.zip"
+          7z x ffmpeg.zip -offmpeg-extract
+          mv ffmpeg-extract/ffmpeg-* ffmpeg
+          echo "FFMPEG_DIR=$(cygpath -w $(pwd)/ffmpeg)" >> $GITHUB_ENV
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           target: x64
-          args: --release --out dist --find-interpreter
+          args: --release --out dist --find-interpreter --features video
           working-directory: crates/processing_pyo3
+      - name: Bundle DLLs into wheels
+        shell: bash
+        run: |
+          pip install delvewheel
+          mkdir dist-fixed
+          for whl in crates/processing_pyo3/dist/*.whl; do
+            delvewheel repair --add-path "$FFMPEG_DIR/bin" -w dist-fixed "$whl"
+          done
+          rm -rf crates/processing_pyo3/dist
+          mv dist-fixed crates/processing_pyo3/dist
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-windows-x64
