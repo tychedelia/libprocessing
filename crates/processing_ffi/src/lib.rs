@@ -1436,6 +1436,65 @@ pub extern "C" fn processing_geometry_attribute_uv() -> u64 {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn processing_geometry_attribute_rotation() -> u64 {
+    geometry_attribute_rotation().to_bits()
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_geometry_attribute_scale() -> u64 {
+    geometry_attribute_scale().to_bits()
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_geometry_attribute_dead() -> u64 {
+    geometry_attribute_dead().to_bits()
+}
+
+/// Returns the format byte (1=Float, 2=Float2, 3=Float3, 4=Float4), 0 on error.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_geometry_attribute_format(attr_id: u64) -> u8 {
+    error::clear_error();
+    error::check(|| {
+        let (_name, fmt) = geometry_attribute_info(Entity::from_bits(attr_id))?;
+        Ok(match fmt {
+            geometry::AttributeFormat::Float => 1,
+            geometry::AttributeFormat::Float2 => 2,
+            geometry::AttributeFormat::Float3 => 3,
+            geometry::AttributeFormat::Float4 => 4,
+        })
+    })
+    .unwrap_or(0)
+}
+
+/// Writes the attribute name to `out` (null-terminated). Returns the string
+/// length *excluding* the NUL terminator. If `out_cap` is too small the name is
+/// truncated but the full length is still returned.
+///
+/// # Safety
+/// - `out` must be valid for writes of `out_cap` bytes (may be null when
+///   `out_cap == 0` for a length query).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn processing_geometry_attribute_name(
+    attr_id: u64,
+    out: *mut u8,
+    out_cap: u64,
+) -> u64 {
+    error::clear_error();
+    let Some((name, _)) = error::check(|| geometry_attribute_info(Entity::from_bits(attr_id)))
+    else {
+        return 0;
+    };
+    let name_bytes = name.as_bytes();
+    let name_len = name_bytes.len();
+    if out_cap > 0 && !out.is_null() {
+        let copy_len = name_len.min((out_cap - 1) as usize);
+        unsafe { std::ptr::copy_nonoverlapping(name_bytes.as_ptr(), out, copy_len) };
+        unsafe { *out.add(copy_len) = 0 };
+    }
+    name_len as u64
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn processing_geometry_attribute_float(geo_id: u64, attr_id: u64, v: f32) {
     error::clear_error();
     let geo_entity = Entity::from_bits(geo_id);
@@ -1965,6 +2024,29 @@ pub unsafe extern "C" fn processing_compute_set_float(
     });
 }
 
+/// Set a vec3 property on a compute shader.
+///
+/// # Safety
+/// - `name` must be non-null
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn processing_compute_set_float3(
+    compute_id: u64,
+    name: *const std::ffi::c_char,
+    x: f32,
+    y: f32,
+    z: f32,
+) {
+    error::clear_error();
+    error::check(|| {
+        let name = unsafe { cstr_to_str(name) }?;
+        compute_set(
+            Entity::from_bits(compute_id),
+            name,
+            shader_value::ShaderValue::Float3([x, y, z]),
+        )
+    });
+}
+
 /// # Safety
 /// `name` must be a valid null-terminated C string.
 #[unsafe(no_mangle)]
@@ -1994,6 +2076,278 @@ pub extern "C" fn processing_compute_dispatch(compute_id: u64, x: u32, y: u32, z
 pub extern "C" fn processing_compute_destroy(compute_id: u64) {
     error::clear_error();
     error::check(|| compute_destroy(Entity::from_bits(compute_id)));
+}
+
+// Particles
+
+/// Create a particle system with the given capacity and attribute set.
+///
+/// # Safety
+/// - `attr_ids` must point to `attr_count` valid u64 values
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn processing_particles_create(
+    capacity: u32,
+    attr_ids: *const u64,
+    attr_count: u32,
+) -> u64 {
+    error::clear_error();
+    let attrs = if attr_count > 0 && !attr_ids.is_null() {
+        unsafe { std::slice::from_raw_parts(attr_ids, attr_count as usize) }
+            .iter()
+            .map(|&id| Entity::from_bits(id))
+            .collect()
+    } else {
+        vec![]
+    };
+    error::check(|| particles_create(capacity, attrs))
+        .map(|e| e.to_bits())
+        .unwrap_or(0)
+}
+
+/// Create a particle system seeded from geometry vertex data.
+///
+/// # Safety
+/// - `attr_ids` must point to `attr_count` valid u64 values
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn processing_particles_create_from_geometry(
+    geo_id: u64,
+    attr_ids: *const u64,
+    attr_count: u32,
+) -> u64 {
+    error::clear_error();
+    let attrs = if attr_count > 0 && !attr_ids.is_null() {
+        unsafe { std::slice::from_raw_parts(attr_ids, attr_count as usize) }
+            .iter()
+            .map(|&id| Entity::from_bits(id))
+            .collect()
+    } else {
+        vec![]
+    };
+    error::check(|| particles_create_from_geometry(Entity::from_bits(geo_id), attrs))
+        .map(|e| e.to_bits())
+        .unwrap_or(0)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_destroy(particles_id: u64) {
+    error::clear_error();
+    error::check(|| particles_destroy(Entity::from_bits(particles_id)));
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_capacity(particles_id: u64) -> u32 {
+    error::clear_error();
+    error::check(|| particles_capacity(Entity::from_bits(particles_id))).unwrap_or(0)
+}
+
+/// Returns the buffer entity for the given attribute, or 0 if not registered.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_buffer(particles_id: u64, attr_id: u64) -> u64 {
+    error::clear_error();
+    error::check(|| {
+        particles_buffer(Entity::from_bits(particles_id), Entity::from_bits(attr_id))
+    })
+    .flatten()
+    .map(|e| e.to_bits())
+    .unwrap_or(0)
+}
+
+/// CPU-driven emission. Writes per-attribute byte payloads into the next `n`
+/// ring-buffer slots. `data` is a concatenated byte buffer; `attr_byte_lengths[i]`
+/// gives the byte length of the i-th attribute's portion.
+///
+/// # Safety
+/// - `attr_ids` must point to `attr_count` valid u64 values
+/// - `data` must point to `data_len` valid bytes
+/// - `attr_byte_lengths` must point to `attr_count` valid u64 values
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn processing_particles_emit(
+    particles_id: u64,
+    n: u32,
+    attr_ids: *const u64,
+    data: *const u8,
+    attr_byte_lengths: *const u64,
+    attr_count: u32,
+) {
+    error::clear_error();
+    error::check(|| {
+        if attr_count == 0 {
+            return particles_emit(Entity::from_bits(particles_id), n, vec![]);
+        }
+        let ids = unsafe { std::slice::from_raw_parts(attr_ids, attr_count as usize) };
+        let lens = unsafe { std::slice::from_raw_parts(attr_byte_lengths, attr_count as usize) };
+        let mut offset: usize = 0;
+        let mut attribute_data = Vec::with_capacity(attr_count as usize);
+        for i in 0..attr_count as usize {
+            let len = lens[i] as usize;
+            let bytes = unsafe { std::slice::from_raw_parts(data.add(offset), len) }.to_vec();
+            attribute_data.push((Entity::from_bits(ids[i]), bytes));
+            offset += len;
+        }
+        particles_emit(Entity::from_bits(particles_id), n, attribute_data)
+    });
+}
+
+/// GPU-driven emission via a compute kernel.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_emit_gpu(
+    particles_id: u64,
+    n: u32,
+    compute_id: u64,
+) {
+    error::clear_error();
+    error::check(|| {
+        particles_emit_gpu(
+            Entity::from_bits(particles_id),
+            n,
+            Entity::from_bits(compute_id),
+        )
+    });
+}
+
+/// Built-in noise kernel. Returns a compute entity (0 on error).
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_kernel_noise() -> u64 {
+    error::clear_error();
+    error::check(particles_kernel_noise)
+        .map(|e| e.to_bits())
+        .unwrap_or(0)
+}
+
+/// Built-in transform kernel. Returns a compute entity (0 on error).
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_kernel_transform() -> u64 {
+    error::clear_error();
+    error::check(particles_kernel_transform)
+        .map(|e| e.to_bits())
+        .unwrap_or(0)
+}
+
+/// Dispatch a compute kernel against the particles' attribute buffers.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_apply(particles_id: u64, compute_id: u64) {
+    error::clear_error();
+    error::check(|| {
+        particles_apply(
+            Entity::from_bits(particles_id),
+            Entity::from_bits(compute_id),
+        )
+    });
+}
+
+/// Record a Particles draw command.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_draw(
+    graphics_id: u64,
+    particles_id: u64,
+    geometry_id: u64,
+) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| {
+        graphics_record_command(
+            graphics_entity,
+            DrawCommand::Particles {
+                particles: Entity::from_bits(particles_id),
+                geometry: Entity::from_bits(geometry_id),
+            },
+        )
+    });
+}
+
+/// Record a FillBuffer draw command (per-instance albedo from a buffer).
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_fill_buffer(graphics_id: u64, buffer_id: u64) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| {
+        graphics_record_command(
+            graphics_entity,
+            DrawCommand::FillBuffer(Entity::from_bits(buffer_id)),
+        )
+    });
+}
+
+/// Set the albedo source to a solid color for a PBR material.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_material_set_albedo_color(
+    mat_id: u64,
+    r: f32,
+    g: f32,
+    b: f32,
+    a: f32,
+) {
+    error::clear_error();
+    error::check(|| material_set_albedo_color(Entity::from_bits(mat_id), [r, g, b, a]));
+}
+
+/// Set the albedo source to a per-instance color buffer for a PBR material.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_material_set_albedo_buffer(mat_id: u64, buffer_id: u64) {
+    error::clear_error();
+    error::check(|| {
+        material_set_albedo_buffer(Entity::from_bits(mat_id), Entity::from_bits(buffer_id))
+    });
+}
+
+/// Set the emissive source to a per-instance color buffer for a PBR material.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_material_set_emissive_buffer(mat_id: u64, buffer_id: u64) {
+    error::clear_error();
+    error::check(|| {
+        material_set_emissive_buffer(Entity::from_bits(mat_id), Entity::from_bits(buffer_id))
+    });
+}
+
+/// Unproject a screen coordinate to world space. `depth` is `[0, 1]` where
+/// 0 = near plane, 1 = far plane. Writes the world point through `out_x`,
+/// `out_y`, `out_z`.
+///
+/// # Safety
+/// `out_x`, `out_y`, `out_z` must each be valid for a single `f32` write.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn processing_graphics_world_from_screen(
+    graphics_id: u64,
+    sx: f32,
+    sy: f32,
+    depth: f32,
+    out_x: *mut f32,
+    out_y: *mut f32,
+    out_z: *mut f32,
+) {
+    error::clear_error();
+    if let Some(world) = error::check(|| {
+        graphics_world_from_screen(Entity::from_bits(graphics_id), sx, sy, depth)
+    }) {
+        unsafe {
+            *out_x = world.x;
+            *out_y = world.y;
+            *out_z = world.z;
+        }
+    }
+}
+
+/// Enable bloom post-processing on the graphics entity. `intensity` controls
+/// the bloom contribution (additive). `threshold` is the HDR brightness
+/// floor: pixels below this value contribute little to bloom, so set it to
+/// e.g. 1.0 to make only HDR-bright pixels bloom strongly.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_graphics_set_bloom(
+    graphics_id: u64,
+    intensity: f32,
+    threshold: f32,
+) {
+    error::clear_error();
+    error::check(|| {
+        graphics_set_bloom(Entity::from_bits(graphics_id), intensity, threshold)
+    });
+}
+
+/// Disable bloom post-processing on the graphics entity.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_graphics_remove_bloom(graphics_id: u64) {
+    error::clear_error();
+    error::check(|| graphics_remove_bloom(Entity::from_bits(graphics_id)));
 }
 
 // Mouse buttons

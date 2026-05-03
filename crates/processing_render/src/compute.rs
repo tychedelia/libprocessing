@@ -199,8 +199,15 @@ pub fn create_compute(app: &mut App, shader_entity: Entity) -> Result<Entity> {
         })?;
     let entry_point = compute_ep.name.clone();
 
-    let mut shader = DynamicShader::new(module)
-        .map_err(|e| ProcessingError::ShaderCompilationError(e.to_string()))?;
+    let mut shader = DynamicShader::new(module).map_err(|e| {
+        let mut msg = e.to_string();
+        let mut src: &dyn std::error::Error = &e;
+        while let Some(s) = src.source() {
+            msg.push_str(&format!("\n  caused by: {s}"));
+            src = s;
+        }
+        ProcessingError::ShaderCompilationError(msg)
+    })?;
     shader.init();
 
     let reflection = shader.reflection();

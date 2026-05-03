@@ -717,6 +717,42 @@ pub fn graphics_ortho(
     })
 }
 
+pub fn graphics_world_from_screen(
+    graphics_entity: Entity,
+    sx: f32,
+    sy: f32,
+    depth: f32,
+) -> error::Result<Vec3> {
+    app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(graphics::world_from_screen, (graphics_entity, sx, sy, depth))
+            .unwrap()
+    })
+}
+
+pub fn graphics_set_bloom(
+    graphics_entity: Entity,
+    intensity: f32,
+    threshold: f32,
+) -> error::Result<()> {
+    app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(
+                graphics::set_bloom,
+                (graphics_entity, intensity, threshold),
+            )
+            .unwrap()
+    })
+}
+
+pub fn graphics_remove_bloom(graphics_entity: Entity) -> error::Result<()> {
+    app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(graphics::remove_bloom, graphics_entity)
+            .unwrap()
+    })
+}
+
 pub fn transform_set_position(entity: Entity, position: Vec3) -> error::Result<()> {
     app_mut(|app| {
         app.world_mut()
@@ -1523,14 +1559,20 @@ pub fn material_set_albedo_color(entity: Entity, color: [f32; 4]) -> error::Resu
     })
 }
 
-/// Set the albedo source to a per-particle color buffer (`Float4` per slot,
-/// indexed by `mesh.tag`). If the material is currently plain PBR, swaps the
-/// asset to a `ParticlesMaterial` while preserving every other
-/// `StandardMaterial` field. `base_color` modulates the buffer color, so
-/// leaving it WHITE renders the buffer color verbatim.
-pub fn material_set_albedo_buffer(
+/// Slot of the `ParticlesExtension` that a buffer is being assigned to.
+#[derive(Copy, Clone)]
+enum ParticlesBufferSlot {
+    Albedo,
+    Emissive,
+}
+
+/// Sets one of the per-particle buffer slots on a material. If the material
+/// is currently plain PBR, swaps the asset to a `ParticlesMaterial` while
+/// preserving every other `StandardMaterial` field.
+fn material_set_particles_buffer(
     entity: Entity,
-    color_buffer_entity: Entity,
+    buffer_entity: Entity,
+    slot: ParticlesBufferSlot,
 ) -> error::Result<()> {
     use bevy::pbr::ExtendedMaterial;
     use crate::particles::material::{ParticlesExtension, ParticlesMaterial};
@@ -1542,7 +1584,7 @@ pub fn material_set_albedo_buffer(
     app_mut(|app| {
         let buffer_handle = app
             .world()
-            .get::<compute::Buffer>(color_buffer_entity)
+            .get::<compute::Buffer>(buffer_entity)
             .ok_or(error::ProcessingError::BufferNotFound)?
             .handle
             .clone();
@@ -1553,13 +1595,17 @@ pub fn material_set_albedo_buffer(
             .0
             .clone();
 
-        // Already field-buffer-backed: just swap the buffer handle in place.
+        // Already particles-backed: just swap the buffer handle in place.
         if let Ok(handle) = untyped.clone().try_typed::<ParticlesMaterial>() {
             let mut mats = app.world_mut().resource_mut::<Assets<ParticlesMaterial>>();
             let mat = mats
                 .get_mut(&handle)
                 .ok_or(error::ProcessingError::MaterialNotFound)?;
-            mat.into_inner().extension.colors = buffer_handle;
+            let ext = &mut mat.into_inner().extension;
+            match slot {
+                ParticlesBufferSlot::Albedo => ext.colors = Some(buffer_handle),
+                ParticlesBufferSlot::Emissive => ext.emissive_colors = Some(buffer_handle),
+            }
             return Ok(());
         }
 
@@ -1577,19 +1623,46 @@ pub fn material_set_albedo_buffer(
             mats.remove(&handle);
             base
         };
+        let extension = match slot {
+            ParticlesBufferSlot::Albedo => ParticlesExtension {
+                colors: Some(buffer_handle),
+                emissive_colors: None,
+            },
+            ParticlesBufferSlot::Emissive => ParticlesExtension {
+                colors: None,
+                emissive_colors: Some(buffer_handle),
+            },
+        };
         let new_handle = world
             .resource_mut::<Assets<ParticlesMaterial>>()
             .add(ExtendedMaterial {
                 base: preserved,
-                extension: ParticlesExtension {
-                    colors: buffer_handle,
-                },
+                extension,
             });
         world
             .entity_mut(entity)
             .insert(UntypedMaterial(new_handle.untyped()));
         Ok(())
     })
+}
+
+/// Set the albedo source to a per-particle color buffer (`Float4` per slot,
+/// indexed by `mesh.tag`). `base_color` modulates the buffer color, so
+/// leaving it WHITE renders the buffer color verbatim.
+pub fn material_set_albedo_buffer(
+    entity: Entity,
+    color_buffer_entity: Entity,
+) -> error::Result<()> {
+    material_set_particles_buffer(entity, color_buffer_entity, ParticlesBufferSlot::Albedo)
+}
+
+/// Set the emissive source to a per-particle color buffer (`Float4` per slot,
+/// indexed by `mesh.tag`). Added on top of the base material's `emissive`.
+pub fn material_set_emissive_buffer(
+    entity: Entity,
+    emissive_buffer_entity: Entity,
+) -> error::Result<()> {
+    material_set_particles_buffer(entity, emissive_buffer_entity, ParticlesBufferSlot::Emissive)
 }
 
 pub fn material_set(
