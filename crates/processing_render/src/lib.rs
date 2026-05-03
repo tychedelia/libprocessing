@@ -2296,11 +2296,15 @@ pub fn particles_emit(
     })
 }
 
-/// Built-in noise kernel: displaces `position` by 3D value noise. Uniforms:
-/// `scale: f32`, `strength: f32`, `time: f32`.
+/// Built-in noise kernel: displaces `position` by 3D value noise. With
+/// `curl = 1`, uses the curl of the noise field instead — divergence-free,
+/// good for swirling-fluid-style flows but ~3x more expensive.
+/// Uniforms: `scale: f32`, `strength: f32`, `time: f32`, `curl: u32`.
 pub fn particles_kernel_noise() -> error::Result<Entity> {
     let shader = shader_load(particles::kernels::NOISE_PATH)?;
-    compute_create(shader)
+    let entity = compute_create(shader)?;
+    compute_set(entity, "curl", shader_value::ShaderValue::UInt(0))?;
+    Ok(entity)
 }
 
 /// Built-in transform kernel: scale → axis-angle rotate → translate on
@@ -2315,6 +2319,133 @@ pub fn particles_kernel_transform() -> error::Result<Entity> {
     compute_set(entity, "rotation_axis", shader_value::ShaderValue::Float3([0.0, 1.0, 0.0]))?;
     compute_set(entity, "rotation_angle", shader_value::ShaderValue::Float(0.0))?;
     compute_set(entity, "scale", shader_value::ShaderValue::Float3([1.0, 1.0, 1.0]))?;
+    Ok(entity)
+}
+
+/// Built-in attractor / repeller kernel: adds a radial impulse to
+/// `velocity` for particles within `radius` of `center`. Uniforms:
+/// `center: vec3`, `strength: f32` (positive attracts, negative repels),
+/// `radius: f32`, `falloff_mode: u32` (0 = constant, 1 = linear,
+/// 2 = smoothstep, 3 = inverse-distance). Defaults are a no-op.
+pub fn particles_kernel_attract() -> error::Result<Entity> {
+    let shader = shader_load(particles::kernels::ATTRACT_PATH)?;
+    let entity = compute_create(shader)?;
+    compute_set(entity, "center", shader_value::ShaderValue::Float3([0.0; 3]))?;
+    compute_set(entity, "strength", shader_value::ShaderValue::Float(0.0))?;
+    compute_set(entity, "radius", shader_value::ShaderValue::Float(1.0))?;
+    compute_set(entity, "falloff_mode", shader_value::ShaderValue::UInt(1))?;
+    Ok(entity)
+}
+
+/// Built-in drag kernel: velocity damping. Each dispatch
+/// `velocity *= (1 - coefficient)`. `velocity_cap > 0` additionally
+/// clamps |velocity| to that magnitude. Defaults are a no-op.
+pub fn particles_kernel_drag() -> error::Result<Entity> {
+    let shader = shader_load(particles::kernels::DRAG_PATH)?;
+    let entity = compute_create(shader)?;
+    compute_set(entity, "coefficient", shader_value::ShaderValue::Float(0.0))?;
+    compute_set(entity, "velocity_cap", shader_value::ShaderValue::Float(0.0))?;
+    Ok(entity)
+}
+
+/// Built-in vortex kernel: tangential force around an axis through
+/// `center`. Uniforms: `center: vec3`, `axis: vec3`, `strength: f32`,
+/// `radius: f32`, `falloff_mode: u32`. Default axis is +Y; default
+/// strength is 0 (no-op).
+pub fn particles_kernel_vortex() -> error::Result<Entity> {
+    let shader = shader_load(particles::kernels::VORTEX_PATH)?;
+    let entity = compute_create(shader)?;
+    compute_set(entity, "center", shader_value::ShaderValue::Float3([0.0; 3]))?;
+    compute_set(entity, "axis", shader_value::ShaderValue::Float3([0.0, 1.0, 0.0]))?;
+    compute_set(entity, "strength", shader_value::ShaderValue::Float(0.0))?;
+    compute_set(entity, "radius", shader_value::ShaderValue::Float(1.0))?;
+    compute_set(entity, "falloff_mode", shader_value::ShaderValue::UInt(1))?;
+    Ok(entity)
+}
+
+/// Built-in bounds kernel: sphere region constraint. Uniforms:
+/// `center: vec3`, `radius: f32`, `mode: u32` (0 = clamp, 1 = reflect,
+/// 2 = wrap, 3 = soft pull), `soft_strength: f32`, `velocity_cap: f32`.
+/// Default mode is `soft` so unset parameters give a soft-walled sphere.
+pub fn particles_kernel_bounds() -> error::Result<Entity> {
+    let shader = shader_load(particles::kernels::BOUNDS_PATH)?;
+    let entity = compute_create(shader)?;
+    compute_set(entity, "center", shader_value::ShaderValue::Float3([0.0; 3]))?;
+    compute_set(entity, "radius", shader_value::ShaderValue::Float(1.0))?;
+    compute_set(entity, "mode", shader_value::ShaderValue::UInt(3))?;
+    compute_set(entity, "soft_strength", shader_value::ShaderValue::Float(0.01))?;
+    compute_set(entity, "velocity_cap", shader_value::ShaderValue::Float(0.0))?;
+    Ok(entity)
+}
+
+/// Built-in impulse kernel: one-shot displacement + velocity kick within
+/// `radius` of `center`. Dispatch from a host event handler (e.g.,
+/// mousePressed); the effect persists in the buffer state. Uniforms:
+/// `center: vec3`, `radius: f32`, `position_kick: f32`,
+/// `velocity_kick: f32`, `falloff_mode: u32` (0 = constant, 1 = linear,
+/// 2 = quadratic, 3 = cubic). Defaults are a no-op.
+pub fn particles_kernel_impulse() -> error::Result<Entity> {
+    let shader = shader_load(particles::kernels::IMPULSE_PATH)?;
+    let entity = compute_create(shader)?;
+    compute_set(entity, "center", shader_value::ShaderValue::Float3([0.0; 3]))?;
+    compute_set(entity, "radius", shader_value::ShaderValue::Float(1.0))?;
+    compute_set(entity, "position_kick", shader_value::ShaderValue::Float(0.0))?;
+    compute_set(entity, "velocity_kick", shader_value::ShaderValue::Float(0.0))?;
+    compute_set(entity, "falloff_mode", shader_value::ShaderValue::UInt(2))?;
+    Ok(entity)
+}
+
+/// Built-in flocking kernel: separation, alignment, cohesion via tiled
+/// brute-force neighbor scan. Reads `position` and `velocity`, integrates
+/// forces, writes back. Does NOT handle bounds or external forces — chain
+/// with `kernelBounds` / `kernelAttract` etc.
+///
+/// Uniforms: `sep_distance: f32`, `nbr_distance: f32`,
+/// `weight_separation/alignment/cohesion: f32`, `max_speed: f32`,
+/// `max_force: f32`, `min_speed: f32` (0 disables). Defaults reproduce
+/// Reynolds-style flocking at world-unit-scale velocities.
+pub fn particles_kernel_flock() -> error::Result<Entity> {
+    let shader = shader_load(particles::kernels::FLOCK_PATH)?;
+    let entity = compute_create(shader)?;
+    compute_set(entity, "sep_distance", shader_value::ShaderValue::Float(1.2))?;
+    compute_set(entity, "nbr_distance", shader_value::ShaderValue::Float(2.5))?;
+    compute_set(entity, "weight_separation", shader_value::ShaderValue::Float(1.5))?;
+    compute_set(entity, "weight_alignment", shader_value::ShaderValue::Float(1.0))?;
+    compute_set(entity, "weight_cohesion", shader_value::ShaderValue::Float(1.0))?;
+    compute_set(entity, "max_speed", shader_value::ShaderValue::Float(0.1))?;
+    compute_set(entity, "max_force", shader_value::ShaderValue::Float(0.003))?;
+    compute_set(entity, "min_speed", shader_value::ShaderValue::Float(0.02))?;
+    Ok(entity)
+}
+
+/// Built-in orientation kernel: writes a per-particle `rotation`
+/// quaternion that rotates the configured `forward` axis to align with
+/// the particle's velocity direction. Default `forward` is +Z, which
+/// matches `Geometry.box(w, h, d)`'s long axis.
+///
+/// Uniforms: `forward: vec3` (default `(0, 0, 1)`).
+pub fn particles_kernel_orient() -> error::Result<Entity> {
+    let shader = shader_load(particles::kernels::ORIENT_PATH)?;
+    let entity = compute_create(shader)?;
+    compute_set(entity, "forward", shader_value::ShaderValue::Float3([0.0, 0.0, 1.0]))?;
+    Ok(entity)
+}
+
+/// Built-in spatial-weight field kernel: writes a per-particle scalar
+/// `weight: f32` based on distance to a sphere. Particles outside the
+/// sphere get 0; inside, the weight follows `falloff_mode`. The output
+/// is intended as input to a downstream AttrMath kernel (e.g., for
+/// conditional writes via mix, or charge accumulation via max).
+///
+/// Uniforms: `center: vec3`, `radius: f32`, `falloff_mode: u32`
+/// (0 = hard, 1 = linear, 2 = smoothstep, 3 = quadratic, 4 = cubic).
+/// Requires the particle system to have an attribute named `weight`.
+pub fn particles_kernel_field() -> error::Result<Entity> {
+    let shader = shader_load(particles::kernels::FIELD_PATH)?;
+    let entity = compute_create(shader)?;
+    compute_set(entity, "center", shader_value::ShaderValue::Float3([0.0; 3]))?;
+    compute_set(entity, "radius", shader_value::ShaderValue::Float(1.0))?;
+    compute_set(entity, "falloff_mode", shader_value::ShaderValue::UInt(2))?;
     Ok(entity)
 }
 

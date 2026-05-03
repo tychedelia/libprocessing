@@ -2047,6 +2047,48 @@ pub unsafe extern "C" fn processing_compute_set_float3(
     });
 }
 
+/// Set a u32 property on a compute shader.
+///
+/// # Safety
+/// - `name` must be non-null
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn processing_compute_set_uint(
+    compute_id: u64,
+    name: *const std::ffi::c_char,
+    value: u32,
+) {
+    error::clear_error();
+    error::check(|| {
+        let name = unsafe { cstr_to_str(name) }?;
+        compute_set(
+            Entity::from_bits(compute_id),
+            name,
+            shader_value::ShaderValue::UInt(value),
+        )
+    });
+}
+
+/// Set an i32 property on a compute shader.
+///
+/// # Safety
+/// - `name` must be non-null
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn processing_compute_set_int(
+    compute_id: u64,
+    name: *const std::ffi::c_char,
+    value: i32,
+) {
+    error::clear_error();
+    error::check(|| {
+        let name = unsafe { cstr_to_str(name) }?;
+        compute_set(
+            Entity::from_bits(compute_id),
+            name,
+            shader_value::ShaderValue::Int(value),
+        )
+    });
+}
+
 /// # Safety
 /// `name` must be a valid null-terminated C string.
 #[unsafe(no_mangle)]
@@ -2219,6 +2261,78 @@ pub extern "C" fn processing_particles_kernel_noise() -> u64 {
 pub extern "C" fn processing_particles_kernel_transform() -> u64 {
     error::clear_error();
     error::check(particles_kernel_transform)
+        .map(|e| e.to_bits())
+        .unwrap_or(0)
+}
+
+/// Built-in attractor / repeller kernel. Returns a compute entity (0 on error).
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_kernel_attract() -> u64 {
+    error::clear_error();
+    error::check(particles_kernel_attract)
+        .map(|e| e.to_bits())
+        .unwrap_or(0)
+}
+
+/// Built-in drag kernel. Returns a compute entity (0 on error).
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_kernel_drag() -> u64 {
+    error::clear_error();
+    error::check(particles_kernel_drag)
+        .map(|e| e.to_bits())
+        .unwrap_or(0)
+}
+
+/// Built-in vortex kernel. Returns a compute entity (0 on error).
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_kernel_vortex() -> u64 {
+    error::clear_error();
+    error::check(particles_kernel_vortex)
+        .map(|e| e.to_bits())
+        .unwrap_or(0)
+}
+
+/// Built-in bounds kernel (sphere). Returns a compute entity (0 on error).
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_kernel_bounds() -> u64 {
+    error::clear_error();
+    error::check(particles_kernel_bounds)
+        .map(|e| e.to_bits())
+        .unwrap_or(0)
+}
+
+/// Built-in impulse kernel. Returns a compute entity (0 on error).
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_kernel_impulse() -> u64 {
+    error::clear_error();
+    error::check(particles_kernel_impulse)
+        .map(|e| e.to_bits())
+        .unwrap_or(0)
+}
+
+/// Built-in flocking kernel. Returns a compute entity (0 on error).
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_kernel_flock() -> u64 {
+    error::clear_error();
+    error::check(particles_kernel_flock)
+        .map(|e| e.to_bits())
+        .unwrap_or(0)
+}
+
+/// Built-in orient kernel. Returns a compute entity (0 on error).
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_kernel_orient() -> u64 {
+    error::clear_error();
+    error::check(particles_kernel_orient)
+        .map(|e| e.to_bits())
+        .unwrap_or(0)
+}
+
+/// Built-in field kernel. Returns a compute entity (0 on error).
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_kernel_field() -> u64 {
+    error::clear_error();
+    error::check(particles_kernel_field)
         .map(|e| e.to_bits())
         .unwrap_or(0)
 }
