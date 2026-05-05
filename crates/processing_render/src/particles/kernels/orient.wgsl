@@ -19,19 +19,19 @@ struct Params {
 // Shortest-arc quaternion from one unit vector to another. Handles the
 // antipodal case (180° rotation) by picking an arbitrary perpendicular
 // axis to rotate around.
-fn quat_from_to(from: vec3<f32>, to: vec3<f32>) -> vec4<f32> {
-    let d = dot(from, to);
+fn quat_from_to(src: vec3<f32>, dst: vec3<f32>) -> vec4<f32> {
+    let d = dot(src, dst);
     if d > 0.999999 {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     }
     if d < -0.999999 {
-        var axis = cross(from, vec3<f32>(1.0, 0.0, 0.0));
+        var axis = cross(src, vec3<f32>(1.0, 0.0, 0.0));
         if dot(axis, axis) < 0.001 {
-            axis = cross(from, vec3<f32>(0.0, 1.0, 0.0));
+            axis = cross(src, vec3<f32>(0.0, 1.0, 0.0));
         }
         return vec4<f32>(normalize(axis), 0.0);
     }
-    let axis = cross(from, to);
+    let axis = cross(src, dst);
     return normalize(vec4<f32>(axis, 1.0 + d));
 }
 
@@ -47,11 +47,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     if len2 < 0.000001 { return; }
     let dir = v * inverseSqrt(len2);
 
-    let from_len2 = dot(params.forward, params.forward);
-    if from_len2 < 0.000001 { return; }
-    let from = params.forward * inverseSqrt(from_len2);
+    let fwd_len2 = dot(params.forward, params.forward);
+    if fwd_len2 < 0.000001 { return; }
+    let fwd = params.forward * inverseSqrt(fwd_len2);
 
-    let q = quat_from_to(from, dir);
+    let q = quat_from_to(fwd, dir);
 
     let ri = i * 4u;
     rotation[ri]      = q.x;

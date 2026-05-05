@@ -1011,6 +1011,44 @@ pub unsafe extern "C" fn processing_image_create(
     .unwrap_or(0)
 }
 
+/// Create an HDR image (`Rgba16Float`) from raw float pixel data. The
+/// caller passes interleaved RGBA f32 values (4 floats per pixel,
+/// `width * height * 4` total). Each f32 is packed to f16 before
+/// upload. Useful for procedural look-up tables that need values
+/// outside the sRGB [0, 1] range (e.g., emissive ramps that drive
+/// bloom).
+///
+/// # Safety
+/// - Init has been called.
+/// - `floats` points to `floats_len` f32 values (must equal
+///   `width * height * 4`).
+/// - This is called from the same thread as init.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn processing_image_create_hdr(
+    width: u32,
+    height: u32,
+    floats: *const f32,
+    floats_len: usize,
+) -> u64 {
+    error::clear_error();
+    // SAFETY: Caller must ensure `floats` is valid for `floats_len` f32 values.
+    let src = unsafe { std::slice::from_raw_parts(floats, floats_len) };
+    error::check(|| {
+        let mut packed = Vec::with_capacity(src.len() * 2);
+        for &f in src {
+            packed.extend_from_slice(&half::f16::from_f32(f).to_le_bytes());
+        }
+        let size = Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        };
+        image_create(size, packed, TextureFormat::Rgba16Float)
+    })
+    .map(|entity| entity.to_bits())
+    .unwrap_or(0)
+}
+
 /// Load an image from a file path.
 ///
 /// # Safety
@@ -2108,6 +2146,25 @@ pub unsafe extern "C" fn processing_compute_set_buffer(
     });
 }
 
+/// # Safety
+/// `name` must be a valid null-terminated C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn processing_compute_set_texture(
+    compute_id: u64,
+    name: *const std::ffi::c_char,
+    image_id: u64,
+) {
+    error::clear_error();
+    error::check(|| {
+        let name = unsafe { cstr_to_str(name) }?;
+        compute_set(
+            Entity::from_bits(compute_id),
+            name,
+            shader_value::ShaderValue::Texture(Entity::from_bits(image_id)),
+        )
+    });
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_compute_dispatch(compute_id: u64, x: u32, y: u32, z: u32) {
     error::clear_error();
@@ -2333,6 +2390,51 @@ pub extern "C" fn processing_particles_kernel_orient() -> u64 {
 pub extern "C" fn processing_particles_kernel_field() -> u64 {
     error::clear_error();
     error::check(particles_kernel_field)
+        .map(|e| e.to_bits())
+        .unwrap_or(0)
+}
+
+/// Built-in attr_linear kernel. Returns a compute entity (0 on error).
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_kernel_attr_linear() -> u64 {
+    error::clear_error();
+    error::check(particles_kernel_attr_linear)
+        .map(|e| e.to_bits())
+        .unwrap_or(0)
+}
+
+/// Built-in attr_combine kernel. Returns a compute entity (0 on error).
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_kernel_attr_combine() -> u64 {
+    error::clear_error();
+    error::check(particles_kernel_attr_combine)
+        .map(|e| e.to_bits())
+        .unwrap_or(0)
+}
+
+/// Built-in attr_mix kernel. Returns a compute entity (0 on error).
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_kernel_attr_mix() -> u64 {
+    error::clear_error();
+    error::check(particles_kernel_attr_mix)
+        .map(|e| e.to_bits())
+        .unwrap_or(0)
+}
+
+/// Built-in attr_lookup1d kernel. Returns a compute entity (0 on error).
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_kernel_attr_lookup1d() -> u64 {
+    error::clear_error();
+    error::check(particles_kernel_attr_lookup1d)
+        .map(|e| e.to_bits())
+        .unwrap_or(0)
+}
+
+/// Built-in attr_lookup2d kernel. Returns a compute entity (0 on error).
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_kernel_attr_lookup2d() -> u64 {
+    error::clear_error();
+    error::check(particles_kernel_attr_lookup2d)
         .map(|e| e.to_bits())
         .unwrap_or(0)
 }

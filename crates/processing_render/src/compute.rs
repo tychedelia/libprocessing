@@ -317,9 +317,14 @@ pub fn set_compute_property(
                 .parameter(&name)
                 .map(|p| p.category())
                 .ok_or_else(|| ProcessingError::UnknownShaderProperty(name.clone()))?;
+            // `ShaderValue::Texture` binds an image. For `Sampler` slots we
+            // reuse the image's own sampler (bevy_naga_reflect resolves the
+            // sampler resource from the image handle automatically).
             if !matches!(
                 category,
-                ParameterCategory::Texture | ParameterCategory::StorageTexture
+                ParameterCategory::Texture
+                    | ParameterCategory::StorageTexture
+                    | ParameterCategory::Sampler
             ) {
                 return Err(ProcessingError::InvalidArgument(format!(
                     "property `{name}` expects {category:?}, got Texture",

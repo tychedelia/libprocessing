@@ -18,6 +18,7 @@ x11 = ["processing/x11"]
 [dependencies]
 processing = { workspace = true }
 bevy = { workspace = true }
+half = "2.7"
 
 [build-dependencies]
 cbindgen = "0.29"
