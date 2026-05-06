@@ -1131,8 +1131,8 @@ pub fn geometry_attribute_scale() -> Entity {
     app_mut(|app| Ok(app.world().resource::<geometry::BuiltinAttributes>().scale)).unwrap()
 }
 
-pub fn geometry_attribute_dead() -> Entity {
-    app_mut(|app| Ok(app.world().resource::<geometry::BuiltinAttributes>().dead)).unwrap()
+pub fn geometry_attribute_life() -> Entity {
+    app_mut(|app| Ok(app.world().resource::<geometry::BuiltinAttributes>().life)).unwrap()
 }
 
 pub fn geometry_attribute_destroy(entity: Entity) -> error::Result<()> {

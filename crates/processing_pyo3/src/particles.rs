@@ -77,7 +77,7 @@ impl Attribute {
     #[staticmethod]
     pub fn scale() -> Self { Self { entity: geometry_attribute_scale() } }
     #[staticmethod]
-    pub fn dead() -> Self { Self { entity: geometry_attribute_dead() } }
+    pub fn life() -> Self { Self { entity: geometry_attribute_life() } }
 
     #[getter]
     pub fn name(&self) -> PyResult<String> {

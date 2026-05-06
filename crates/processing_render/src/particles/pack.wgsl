@@ -1,6 +1,6 @@
-// Packs Particles position/rotation/scale/dead buffers into the per-instance
+// Packs Particles position/rotation/scale/life buffers into the per-instance
 // MeshInputUniform / MeshCullingData slots reserved by `GpuBatchedMesh3d`.
-// HAS_ROTATION / HAS_SCALE / HAS_DEAD shader_defs gate the optional bindings.
+// HAS_ROTATION / HAS_SCALE / HAS_LIFE shader_defs gate the optional bindings.
 
 struct MeshInput {
     world_from_local: mat3x4<f32>,
@@ -21,7 +21,7 @@ struct MeshCullingData {
     aabb_center: vec3<f32>,
     _pad: f32,
     aabb_half_extents: vec3<f32>,
-    dead: f32,
+    life: f32,
 }
 
 struct PackParams {
@@ -40,8 +40,8 @@ struct PackParams {
 #ifdef HAS_SCALE
 @group(0) @binding(4) var<storage, read> scale: array<f32>;
 #endif
-#ifdef HAS_DEAD
-@group(0) @binding(5) var<storage, read> dead: array<f32>;
+#ifdef HAS_LIFE
+@group(0) @binding(5) var<storage, read> life: array<f32>;
 #endif
 @group(0) @binding(6) var<uniform> params: PackParams;
 
@@ -113,9 +113,10 @@ fn pack(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     mesh_culling_buffer[slot].aabb_center = vec3<f32>(0.0, 0.0, 0.0);
     mesh_culling_buffer[slot].aabb_half_extents = vec3<f32>(1.0, 1.0, 1.0);
-#ifdef HAS_DEAD
-    mesh_culling_buffer[slot].dead = dead[i];
+#ifdef HAS_LIFE
+    mesh_culling_buffer[slot].life = life[i];
 #else
-    mesh_culling_buffer[slot].dead = 0.0;
+    // No `life` attribute registered — render every slot unconditionally.
+    mesh_culling_buffer[slot].life = 1.0;
 #endif
 }

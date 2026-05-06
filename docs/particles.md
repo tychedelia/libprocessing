@@ -13,7 +13,7 @@ point cloud.
   named typed attribute identity (`AttributeFormat::{Float, Float2, Float3,
   Float4}`), shared between Geometries and Particles. Builtins: `position`,
   `normal`, `color`, `uv`, plus the particles-only `rotation` (Float4 quat),
-  `scale` (Float3), `dead` (Float, 0=alive).
+  `scale` (Float3), `life` (Float, >0 = render, <=0 = cull).
 - **Upstream `processing/bevy`** commit `ee443e51` adds `GpuBatchedMesh3d` and
   `GpuInstanceBatchReservations` — a fixed-capacity batch where a compute pass
   writes per-instance transforms into the upstream input buffer before
@@ -80,7 +80,8 @@ The pack shader (`particles/pack.wgsl`) is specialized per
   + position translation.
 - `mesh_input_buffer[base+i].tag = i` — slot index, available via
   `mesh_functions::get_tag(instance_index)`.
-- `MeshCullingData[base+i].dead` — from the `dead` buffer if present, else 0.
+- `MeshCullingData[base+i].life` — from the `life` buffer if present, else 1.0
+  (always render). Slots with `life <= 0` are skipped by GPU preprocessing.
 
 ## Materials
 
@@ -143,19 +144,21 @@ particles_emit_gpu(p, n, spawn_kernel)?;
 Auto-binds attribute buffers and `emit_range: vec4<f32> = (base_slot, n,
 capacity, 0)`. The kernel derives its target slot from `emit_range`.
 
-No auto-defaults — if the field has a `dead` attribute, the caller must
-include it (typically `n` zero-floats) or new slots inherit the previous
-occupant's death.
+No auto-defaults — if the field has a `life` attribute, the caller must
+include it (typically `n` ones) or new slots inherit the previous occupant's
+life value.
 
 ## Lifecycle
 
-`dead` is a builtin Float attribute (0=alive, non-zero=dead). When registered,
-the pack pass writes it into `MeshCullingData::dead`; non-zero slots are
-skipped in preprocessing.
+`life` is a builtin Float attribute (`>0` = render, `<=0` = culled). When
+registered, the pack pass writes it into `MeshCullingData::life`; slots with
+`life <= 0` are skipped by GPU preprocessing. Buffers zero-fill on creation,
+so unemitted ring slots are culled by default — no manual init required.
 
-Aging is user-managed via an apply kernel that increments age and flips
-`dead` when age exceeds ttl. See `particles_lifecycle.rs`. Seed `dead = 1.0`
-for unemitted ring slots so they don't render before being filled.
+Aging is user-managed via an apply kernel that increments age and writes
+`life = 0` when age exceeds ttl. See `particles_lifecycle.rs`. `life` can
+also smoothly decrease as a fade factor — culling kicks in at the zero
+crossing.
 
 ## Examples
 

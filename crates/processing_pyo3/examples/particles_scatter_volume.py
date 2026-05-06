@@ -14,7 +14,7 @@ struct Params { dt: f32, ttl: f32, _pad0: f32, _pad1: f32 }
 
 @group(0) @binding(0) var<storage, read_write> scale: array<f32>;
 @group(0) @binding(1) var<storage, read_write> age:   array<f32>;
-@group(0) @binding(2) var<storage, read_write> dead:  array<f32>;
+@group(0) @binding(2) var<storage, read_write> life:  array<f32>;
 @group(0) @binding(3) var<uniform>             params: Params;
 
 @compute @workgroup_size(64)
@@ -22,7 +22,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let i = gid.x;
     let count = arrayLength(&age);
     if i >= count { return; }
-    if dead[i] != 0.0 { return; }
+    if life[i] <= 0.0 { return; }
 
     age[i] = age[i] + params.dt;
     let t = age[i] / params.ttl;
@@ -33,7 +33,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     scale[i * 3u + 1u] = s;
     scale[i * 3u + 2u] = s;
 
-    if age[i] > params.ttl { dead[i] = 1.0; }
+    if age[i] > params.ttl { life[i] = 0.0; }
 }
 """
 
@@ -67,13 +67,12 @@ def setup():
         attributes=[
             Attribute.position(),
             Attribute.scale(),
-            Attribute.dead(),
+            Attribute.life(),
             age_attr,
         ],
     )
 
-    # Park unemitted slots until the scatter kernel fills them.
-    p.buffer(Attribute.dead()).write([1.0] * CAPACITY)
+    # Zero-fill of `life` parks unemitted slots automatically (life=0 = culled).
 
     mat = Material.unlit(albedo=[1.0, 1.0, 1.0, 1.0])
 

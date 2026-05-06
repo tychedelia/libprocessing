@@ -229,10 +229,11 @@ pub struct BuiltinAttributes {
     pub rotation: Entity,
     /// Per-instance scale `(x, y, z)`. Field-only.
     pub scale: Entity,
-    /// Per-particle lifecycle flag: `0.0` = alive, non-zero = dead (skipped in
-    /// preprocessing). Field-only. The pack pass writes this into
-    /// `MeshCullingData::dead`.
-    pub dead: Entity,
+    /// Per-particle life value: `> 0.0` = render, `<= 0.0` = skip in
+    /// preprocessing. Field-only. The pack pass writes this into
+    /// `MeshCullingData::life`. Zero-init buffers thus start fully culled —
+    /// natural for ring-buffer slots that haven't been emitted into yet.
+    pub life: Entity,
 }
 
 impl FromWorld for BuiltinAttributes {
@@ -271,8 +272,8 @@ impl FromWorld for BuiltinAttributes {
         let scale = world
             .spawn(Attribute::new("scale", AttributeFormat::Float3))
             .id();
-        let dead = world
-            .spawn(Attribute::new("dead", AttributeFormat::Float))
+        let life = world
+            .spawn(Attribute::new("life", AttributeFormat::Float))
             .id();
 
         Self {
@@ -282,7 +283,7 @@ impl FromWorld for BuiltinAttributes {
             uv,
             rotation,
             scale,
-            dead,
+            life,
         }
     }
 }

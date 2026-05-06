@@ -15,7 +15,7 @@ struct Params { dt: f32, ttl: f32, _pad0: f32, _pad1: f32 }
 
 @group(0) @binding(0) var<storage, read_write> scale: array<f32>;
 @group(0) @binding(1) var<storage, read_write> age:   array<f32>;
-@group(0) @binding(2) var<storage, read_write> dead:  array<f32>;
+@group(0) @binding(2) var<storage, read_write> life:  array<f32>;
 @group(0) @binding(3) var<uniform>             params: Params;
 
 @compute @workgroup_size(64)
@@ -23,7 +23,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let i = gid.x;
     let count = arrayLength(&age);
     if i >= count { return; }
-    if dead[i] != 0.0 { return; }
+    if life[i] <= 0.0 { return; }
 
     age[i] = age[i] + params.dt;
     let t = age[i] / params.ttl;
@@ -34,7 +34,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     scale[i * 3u + 1u] = s;
     scale[i * 3u + 2u] = s;
 
-    if age[i] > params.ttl { dead[i] = 1.0; }
+    if age[i] > params.ttl { life[i] = 0.0; }
 }
 "#;
 
@@ -69,18 +69,15 @@ fn sketch() -> error::Result<()> {
     let capacity: u32 = 30_000;
     let position_attr = geometry_attribute_position();
     let scale_attr = geometry_attribute_scale();
-    let dead_attr = geometry_attribute_dead();
+    let life_attr = geometry_attribute_life();
     let age_attr = geometry_attribute_create("age", AttributeFormat::Float)?;
 
     let p = particles_create(
         capacity,
-        vec![position_attr, scale_attr, dead_attr, age_attr],
+        vec![position_attr, scale_attr, life_attr, age_attr],
     )?;
-
-    let dead_buf = particles_buffer(p, dead_attr)?
-        .ok_or(error::ProcessingError::ParticlesNotFound)?;
-    let init_dead: Vec<u8> = (0..capacity).flat_map(|_| 1.0_f32.to_le_bytes()).collect();
-    buffer_write(dead_buf, init_dead)?;
+    // Zero-fill of `life` is "culled" — slots stay hidden until the scatter
+    // kernel emits into them and writes life=1.
 
     let age_shader = shader_create(AGE_SHADER)?;
     let aging = compute_create(age_shader)?;

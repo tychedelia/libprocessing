@@ -1484,8 +1484,8 @@ pub extern "C" fn processing_geometry_attribute_scale() -> u64 {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn processing_geometry_attribute_dead() -> u64 {
-    geometry_attribute_dead().to_bits()
+pub extern "C" fn processing_geometry_attribute_life() -> u64 {
+    geometry_attribute_life().to_bits()
 }
 
 /// Returns the format byte (1=Float, 2=Float2, 3=Float3, 4=Float4), 0 on error.

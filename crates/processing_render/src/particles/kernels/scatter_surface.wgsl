@@ -1,10 +1,10 @@
 // Initializes particle positions by area-weighted random scatter on a source
 // mesh's surface. Sprinkle POP analogue. Dispatched via `particles_emit_gpu`.
 //
-// Particle attributes required: `position`, `scale`, `age`, `dead`. The
-// kernel resets `age = 0` and `dead = 0` so freshly-emitted slots aren't
-// skipped by an aging pass on the next frame, and seeds `scale = 1` so a
-// follow-up `attr_linear` decay produces the expected fade.
+// Particle attributes required: `position`, `scale`, `age`, `life`. The
+// kernel resets `age = 0`, seeds `scale = 1` (so a follow-up `attr_linear`
+// decay produces the expected fade), and sets `life = 1` so the GPU
+// preprocess passes the slot through to the renderer.
 //
 // Bindings:
 //   source_position: deinterleaved mesh position attribute (3 f32s / vertex).
@@ -13,7 +13,7 @@
 //     `particles_scatter_create` as a regular storage buffer (mesh slab
 //     offsets and u16 indices are flattened CPU-side at setup).
 //   cdf: prefix-summed face area, normalized so cdf[face_count-1] == 1.0.
-//   position / age / dead: ring-buffer particle attributes.
+//   position / age / life: ring-buffer particle attributes.
 //   params.face_count: triangle count.
 //   emit_range: (base_slot, count, capacity, 0). Matches the other GPU emit
 //     kernels' convention; consumed by `particles_emit_gpu`.
@@ -31,7 +31,7 @@ struct Params {
 @group(0) @binding(3) var<storage, read_write> position:        array<f32>;
 @group(0) @binding(4) var<storage, read_write> scale:           array<f32>;
 @group(0) @binding(5) var<storage, read_write> age:             array<f32>;
-@group(0) @binding(6) var<storage, read_write> dead:            array<f32>;
+@group(0) @binding(6) var<storage, read_write> life:            array<f32>;
 @group(0) @binding(7) var<uniform>             params:          Params;
 @group(0) @binding(8) var<uniform>             emit_range:      vec4<f32>;
 
@@ -111,5 +111,5 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     scale[slot * 3u + 1u] = 1.0;
     scale[slot * 3u + 2u] = 1.0;
     age[slot] = 0.0;
-    dead[slot] = 0.0;
+    life[slot] = 1.0;
 }
