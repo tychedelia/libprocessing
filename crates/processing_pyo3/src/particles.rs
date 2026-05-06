@@ -242,45 +242,163 @@ impl Particles {
         particles_emit_gpu(self.entity, n, compute.entity)
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
+
+    // ── Built-in kernel factories ───────────────────────────────────────
+    //
+    // Mirrors the Java `Particles.noise()` / `.scatterVolume(geo)` pattern.
+    // Each returns a configured `Compute` ready to pass to `apply` /
+    // `emit_gpu`. Uniforms can be tweaked via `compute.set(name=value, ...)`.
+
+    /// Procedural value noise displacement. Uniforms: `scale`, `strength`,
+    /// `time`, `curl`.
+    #[staticmethod]
+    pub fn noise() -> PyResult<Compute> {
+        let entity = particles_kernel_noise()
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        Ok(Compute::from_entity(entity))
+    }
+
+    /// Affine: scale → axis-angle rotate → translate. Identity defaults so
+    /// unset uniforms are no-ops.
+    #[staticmethod]
+    pub fn transform() -> PyResult<Compute> {
+        let entity = particles_kernel_transform()
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        Ok(Compute::from_entity(entity))
+    }
+
+    /// Radial impulse to velocity. Uniforms: `center`, `strength`, `radius`,
+    /// `falloff_mode`.
+    #[staticmethod]
+    pub fn attract() -> PyResult<Compute> {
+        let entity = particles_kernel_attract()
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        Ok(Compute::from_entity(entity))
+    }
+
+    /// Velocity damping. Uniforms: `coefficient`, `velocity_cap`.
+    #[staticmethod]
+    pub fn drag() -> PyResult<Compute> {
+        let entity = particles_kernel_drag()
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        Ok(Compute::from_entity(entity))
+    }
+
+    /// Vortex force around an axis. Uniforms: `center`, `axis`, `strength`,
+    /// `radius`, `falloff_mode`.
+    #[staticmethod]
+    pub fn vortex() -> PyResult<Compute> {
+        let entity = particles_kernel_vortex()
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        Ok(Compute::from_entity(entity))
+    }
+
+    /// Bounce / wrap at boundaries. Uniforms: `center`, `radius`, `mode`,
+    /// `soft_strength`, `velocity_cap`.
+    #[staticmethod]
+    pub fn bounds() -> PyResult<Compute> {
+        let entity = particles_kernel_bounds()
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        Ok(Compute::from_entity(entity))
+    }
+
+    /// One-shot impulse (e.g., wind gust). Uniforms: `center`, `radius`,
+    /// `position_kick`, `velocity_kick`, `falloff_mode`.
+    #[staticmethod]
+    pub fn impulse() -> PyResult<Compute> {
+        let entity = particles_kernel_impulse()
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        Ok(Compute::from_entity(entity))
+    }
+
+    /// Boid-style flocking.
+    #[staticmethod]
+    pub fn flock() -> PyResult<Compute> {
+        let entity = particles_kernel_flock()
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        Ok(Compute::from_entity(entity))
+    }
+
+    /// Align rotation to velocity.
+    #[staticmethod]
+    pub fn orient() -> PyResult<Compute> {
+        let entity = particles_kernel_orient()
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        Ok(Compute::from_entity(entity))
+    }
+
+    /// Sample a 3D grid field.
+    #[staticmethod]
+    pub fn field() -> PyResult<Compute> {
+        let entity = particles_kernel_field()
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        Ok(Compute::from_entity(entity))
+    }
+
+    /// In-place scalar linear transform: `op = op * scale + offset`. Bind the
+    /// destination buffer via `compute.set(op=buffer)`. With scale<1 it's a
+    /// per-dispatch geometric decay.
+    #[staticmethod]
+    pub fn attr_linear() -> PyResult<Compute> {
+        let entity = particles_kernel_attr_linear()
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        Ok(Compute::from_entity(entity))
+    }
+
+    /// Combine two attribute buffers.
+    #[staticmethod]
+    pub fn attr_combine() -> PyResult<Compute> {
+        let entity = particles_kernel_attr_combine()
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        Ok(Compute::from_entity(entity))
+    }
+
+    /// Mix two attribute buffers by a per-particle weight.
+    #[staticmethod]
+    pub fn attr_mix() -> PyResult<Compute> {
+        let entity = particles_kernel_attr_mix()
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        Ok(Compute::from_entity(entity))
+    }
+
+    /// 1D ramp lookup: sample a texture by a per-particle scalar.
+    #[staticmethod]
+    pub fn attr_lookup1d() -> PyResult<Compute> {
+        let entity = particles_kernel_attr_lookup1d()
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        Ok(Compute::from_entity(entity))
+    }
+
+    /// 2D lookup: sample a texture by per-particle (u, v).
+    #[staticmethod]
+    pub fn attr_lookup2d() -> PyResult<Compute> {
+        let entity = particles_kernel_attr_lookup2d()
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        Ok(Compute::from_entity(entity))
+    }
+
+    /// Sprinkle "Per Primitive" mode — area-weighted surface scatter from a
+    /// source mesh. Mutates the mesh asset to use deinterleaved vertex
+    /// bindings.
+    #[staticmethod]
+    pub fn scatter_surface(geometry: &Geometry) -> PyResult<Compute> {
+        let entity = particles_scatter_create(geometry.entity)
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        Ok(Compute::from_entity(entity))
+    }
+
+    /// Sprinkle "Volume" mode — AABB rejection sampling inside a closed source
+    /// mesh. Tune via `compute.set(max_attempts=N)`.
+    #[staticmethod]
+    pub fn scatter_volume(geometry: &Geometry) -> PyResult<Compute> {
+        let entity = particles_scatter_volume_create(geometry.entity)
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        Ok(Compute::from_entity(entity))
+    }
 }
 
 impl Drop for Particles {
     fn drop(&mut self) {
         let _ = particles_destroy(self.entity);
     }
-}
-
-/// Surface scatter kernel — Sprinkle "Per Primitive" mode analogue. Returns a
-/// `Compute` configured to emit particles uniformly across the source mesh's
-/// surface area when dispatched via `Particles.emit_gpu`.
-///
-/// Mutates the source mesh asset to use deinterleaved vertex bindings.
-pub fn kernel_scatter_surface(geometry: &Geometry) -> PyResult<Compute> {
-    let entity = particles_scatter_create(geometry.entity)
-        .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
-    Ok(Compute::from_entity(entity))
-}
-
-/// Volume scatter kernel — Sprinkle "Volume" mode analogue. Returns a
-/// `Compute` configured to emit particles uniformly inside the source mesh's
-/// volume by AABB rejection sampling. Set `max_attempts` via
-/// `compute.set(max_attempts=N)` to trade fill rate for cost.
-pub fn kernel_scatter_volume(geometry: &Geometry) -> PyResult<Compute> {
-    let entity = particles_scatter_volume_create(geometry.entity)
-        .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
-    Ok(Compute::from_entity(entity))
-}
-
-/// Built-in noise kernel. Uniforms: `scale`, `strength`, `time`.
-pub fn kernel_noise() -> PyResult<Compute> {
-    let entity = particles_kernel_noise().map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
-    Ok(Compute::from_entity(entity))
-}
-
-/// Built-in transform kernel: scale → axis-angle rotate → translate. Uniforms:
-/// `translate: vec3`, `rotation_axis: vec3`, `rotation_angle: f32`,
-/// `scale: vec3`. Identity defaults are seeded so unset uniforms are no-ops.
-pub fn kernel_transform() -> PyResult<Compute> {
-    let entity = particles_kernel_transform().map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
-    Ok(Compute::from_entity(entity))
 }

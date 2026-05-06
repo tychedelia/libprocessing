@@ -1286,25 +1286,6 @@ mod mewnala {
         )
     }
 
-    #[pyfunction]
-    fn kernel_noise() -> PyResult<Compute> {
-        super::particles::kernel_noise()
-    }
-
-    #[pyfunction]
-    fn kernel_transform() -> PyResult<Compute> {
-        super::particles::kernel_transform()
-    }
-
-    #[pyfunction]
-    fn kernel_scatter_surface(geometry: &Geometry) -> PyResult<Compute> {
-        super::particles::kernel_scatter_surface(geometry)
-    }
-
-    #[pyfunction]
-    fn kernel_scatter_volume(geometry: &Geometry) -> PyResult<Compute> {
-        super::particles::kernel_scatter_volume(geometry)
-    }
 
     #[pyfunction(name = "color")]
     #[pyo3(pass_module, signature = (*args))]
