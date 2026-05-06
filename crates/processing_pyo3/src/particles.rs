@@ -250,6 +250,27 @@ impl Drop for Particles {
     }
 }
 
+/// Surface scatter kernel — Sprinkle "Per Primitive" mode analogue. Returns a
+/// `Compute` configured to emit particles uniformly across the source mesh's
+/// surface area when dispatched via `Particles.emit_gpu`.
+///
+/// Mutates the source mesh asset to use deinterleaved vertex bindings.
+pub fn kernel_scatter_surface(geometry: &Geometry) -> PyResult<Compute> {
+    let entity = particles_scatter_create(geometry.entity)
+        .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+    Ok(Compute::from_entity(entity))
+}
+
+/// Volume scatter kernel — Sprinkle "Volume" mode analogue. Returns a
+/// `Compute` configured to emit particles uniformly inside the source mesh's
+/// volume by AABB rejection sampling. Set `max_attempts` via
+/// `compute.set(max_attempts=N)` to trade fill rate for cost.
+pub fn kernel_scatter_volume(geometry: &Geometry) -> PyResult<Compute> {
+    let entity = particles_scatter_volume_create(geometry.entity)
+        .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+    Ok(Compute::from_entity(entity))
+}
+
 /// Built-in noise kernel. Uniforms: `scale`, `strength`, `time`.
 pub fn kernel_noise() -> PyResult<Compute> {
     let entity = particles_kernel_noise().map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;

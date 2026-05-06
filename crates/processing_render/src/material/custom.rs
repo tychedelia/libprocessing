@@ -313,9 +313,13 @@ pub(crate) fn shader_value_to_reflect(value: &ShaderValue) -> Result<Box<dyn Par
         ShaderValue::Int4(v) => Box::new(IVec4::from_array(*v)),
         ShaderValue::UInt(v) => Box::new(*v),
         ShaderValue::Mat4(v) => Box::new(Mat4::from_cols_array(v)),
-        ShaderValue::Texture(_) | ShaderValue::Buffer(_) => {
+        ShaderValue::Texture(_)
+        | ShaderValue::Buffer(_)
+        | ShaderValue::MeshAttribute(..)
+        | ShaderValue::MeshIndex(_) => {
             return Err(ProcessingError::InvalidArgument(
-                "Texture/Buffer must be bound via set_property, not as a uniform value".to_string(),
+                "Texture/Buffer/Mesh* must be bound via set_property, not as a uniform value"
+                    .to_string(),
             ));
         }
     })

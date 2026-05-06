@@ -1,0 +1,144 @@
+// Sprinkle POP analogue: scatter dense bright points across a source mesh's
+// surface each frame, area-weighted. Particles age out and the ring buffer
+// wraps.
+
+use processing_glfw::GlfwContext;
+use std::time::Instant;
+
+use bevy::math::Vec3;
+use processing::prelude::*;
+use processing_render::geometry::AttributeFormat;
+use processing_render::render::command::DrawCommand;
+
+const AGE_SHADER: &str = r#"
+struct Params { dt: f32, ttl: f32, _pad0: f32, _pad1: f32 }
+
+@group(0) @binding(0) var<storage, read_write> scale: array<f32>;
+@group(0) @binding(1) var<storage, read_write> age:   array<f32>;
+@group(0) @binding(2) var<storage, read_write> dead:  array<f32>;
+@group(0) @binding(3) var<uniform>             params: Params;
+
+// Quick rise to full scale, then linear fade-out. Gives a sparkle-like life
+// curve rather than a slow shrink.
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = gid.x;
+    let count = arrayLength(&age);
+    if i >= count { return; }
+    if dead[i] != 0.0 { return; }
+
+    age[i] = age[i] + params.dt;
+    let t = age[i] / params.ttl;
+    let rise = clamp(t / 0.05, 0.0, 1.0);
+    let fall = clamp((1.0 - t) / 0.6, 0.0, 1.0);
+    let s = rise * fall;
+    scale[i * 3u + 0u] = s;
+    scale[i * 3u + 1u] = s;
+    scale[i * 3u + 2u] = s;
+
+    if age[i] > params.ttl { dead[i] = 1.0; }
+}
+"#;
+
+fn main() {
+    sketch().unwrap();
+    exit(0).unwrap();
+}
+
+fn sketch() -> error::Result<()> {
+    let mut glfw_ctx = GlfwContext::new(900, 700)?;
+    init(Config::default())?;
+
+    let surface = glfw_ctx.create_surface(900, 700)?;
+    let graphics = graphics_create(surface, 900, 700, TextureFormat::Rgba16Float)?;
+
+    graphics_mode_3d(graphics)?;
+    transform_set_position(graphics, Vec3::new(0.0, 0.4, 4.5))?;
+    transform_look_at(graphics, Vec3::ZERO)?;
+
+    // Two directional lights so both faces of the orbiting sphere read.
+    let _key = light_create_directional(
+        graphics,
+        bevy::color::Color::srgb(1.0, 0.95, 0.85),
+        4500.0,
+    )?;
+
+    // Source mesh — particles scatter across this implicit surface (the source
+    // itself is not drawn). High subdivision gives the area-weighted CDF a
+    // smooth distribution.
+    let source = geometry_sphere(1.2, 96, 48)?;
+    let scatter = particles_scatter_create(source)?;
+
+    // Particle visualization: minimal low-poly sphere — tiny enough to read as
+    // a point at the camera distance, just enough subdivision to avoid hard
+    // facets near the silhouette.
+    let particle = geometry_sphere(0.005, 6, 4)?;
+
+    let capacity: u32 = 40_000;
+    let position_attr = geometry_attribute_position();
+    let scale_attr = geometry_attribute_scale();
+    let dead_attr = geometry_attribute_dead();
+    let age_attr = geometry_attribute_create("age", AttributeFormat::Float)?;
+
+    let p = particles_create(
+        capacity,
+        vec![position_attr, scale_attr, dead_attr, age_attr],
+    )?;
+
+    let dead_buf = particles_buffer(p, dead_attr)?
+        .ok_or(error::ProcessingError::ParticlesNotFound)?;
+    let init_dead: Vec<u8> = (0..capacity).flat_map(|_| 1.0_f32.to_le_bytes()).collect();
+    buffer_write(dead_buf, init_dead)?;
+
+    let age_shader = shader_create(AGE_SHADER)?;
+    let aging = compute_create(age_shader)?;
+
+    // Lit PBR so the directional light picks out the implicit sphere's
+    // curvature — particles facing the key light read brighter than those on
+    // the far side, and the shape emerges from the point cloud.
+    let mat = material_create_pbr()?;
+    material_set_albedo_color(mat, [0.9, 0.85, 1.0, 1.0])?;
+
+    let burst: u32 = 600;
+    let dt: f32 = 1.0 / 60.0;
+    let ttl: f32 = 4.0;
+    let start = Instant::now();
+
+    while glfw_ctx.poll_events() {
+        graphics_begin_draw(graphics)?;
+        graphics_record_command(
+            graphics,
+            DrawCommand::BackgroundColor(bevy::color::Color::srgb(0.03, 0.03, 0.05)),
+        )?;
+        graphics_record_command(graphics, DrawCommand::Material(mat))?;
+        graphics_record_command(
+            graphics,
+            DrawCommand::Particles {
+                particles: p,
+                geometry: particle,
+            },
+        )?;
+        graphics_end_draw(graphics)?;
+
+        // Slow orbit around the implicit source so the surface reads as a
+        // shape rather than a flat field of points.
+        let t = start.elapsed().as_secs_f32();
+        let cam_x = (t * 0.25).cos() * 4.5;
+        let cam_z = (t * 0.25).sin() * 4.5;
+        transform_set_position(graphics, Vec3::new(cam_x, 0.4, cam_z))?;
+        transform_look_at(graphics, Vec3::ZERO)?;
+
+        compute_set(
+            scatter,
+            "seed",
+            shader_value::ShaderValue::UInt((t * 1000.0) as u32 ^ 0xc0ffeeu32),
+        )?;
+        particles_emit_gpu(p, burst, scatter)?;
+
+        compute_set(aging, "dt", shader_value::ShaderValue::Float(dt))?;
+        compute_set(aging, "ttl", shader_value::ShaderValue::Float(ttl))?;
+        particles_apply(p, aging)?;
+    }
+
+    Ok(())
+}

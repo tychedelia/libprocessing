@@ -209,6 +209,14 @@ path = "examples/particles_emit_gpu.rs"
 name = "particles_stress"
 path = "examples/particles_stress.rs"
 
+[[example]]
+name = "particles_scatter"
+path = "examples/particles_scatter.rs"
+
+[[example]]
+name = "particles_scatter_volume"
+path = "examples/particles_scatter_volume.rs"
+
 [profile.wasm-release]
 inherits = "release"
 opt-level = "z"

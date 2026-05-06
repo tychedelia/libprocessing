@@ -23,6 +23,8 @@ impl Plugin for ParticlesKernelsPlugin {
         embedded_asset!(app, "attr_mix.wgsl");
         embedded_asset!(app, "attr_lookup1d.wgsl");
         embedded_asset!(app, "attr_lookup2d.wgsl");
+        embedded_asset!(app, "scatter_surface.wgsl");
+        embedded_asset!(app, "scatter_volume.wgsl");
     }
 }
 
@@ -47,3 +49,7 @@ pub const ATTR_LOOKUP1D_PATH: &str =
     "embedded://processing_render/particles/kernels/attr_lookup1d.wgsl";
 pub const ATTR_LOOKUP2D_PATH: &str =
     "embedded://processing_render/particles/kernels/attr_lookup2d.wgsl";
+pub const SCATTER_SURFACE_PATH: &str =
+    "embedded://processing_render/particles/kernels/scatter_surface.wgsl";
+pub const SCATTER_VOLUME_PATH: &str =
+    "embedded://processing_render/particles/kernels/scatter_volume.wgsl";

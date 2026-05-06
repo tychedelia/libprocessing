@@ -2075,14 +2075,16 @@ pub fn compute_dispatch(entity: Entity, x: u32, y: u32, z: u32) -> error::Result
         app.update();
 
         let args = {
-            let c = app
-                .world()
+            let world = app.world();
+            let c = world
                 .get::<compute::Compute>(entity)
                 .ok_or(error::ProcessingError::ComputeNotFound)?;
+            let mesh_bindings = compute::resolve_mesh_bindings(world, c)?;
             (
                 c.pipeline_id,
                 c.bind_group_layout_descriptors.clone(),
                 c.shader.clone(),
+                mesh_bindings,
                 x,
                 y,
                 z,
@@ -2126,6 +2128,118 @@ pub fn particles_create_from_geometry(
             )
             .unwrap()
     })
+}
+
+/// Build a Sprinkle-style surface scatter kernel from a source [`Geometry`].
+///
+/// Mutates the source mesh asset to use per-attribute vertex bindings (so the
+/// position buffer can be bound to compute), and uploads a face-area CDF and a
+/// dense `u32` index buffer. Returns a [`Compute`] kernel pre-configured for
+/// `particles_emit_gpu`.
+///
+/// Subsequent renders of the same mesh use split bindings; if you also want
+/// the mesh rendered with interleaved vertex layout, clone the asset before
+/// passing it here.
+///
+/// ```ignore
+/// let source = geometry_torus(1.0, 0.4, 32, 16)?;
+/// let scatter = particles_scatter_create(source)?;
+/// // Each frame:
+/// particles_emit_gpu(p, n_per_frame, scatter)?;
+/// ```
+pub fn particles_scatter_create(source_geometry: Entity) -> error::Result<Entity> {
+    let (cdf_bytes, indices_bytes, face_count) = app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(particles::prepare_scatter_source, source_geometry)
+            .unwrap()
+    })?;
+
+    let cdf_buf = buffer_create_with_data(cdf_bytes)?;
+    let idx_buf = buffer_create_with_data(indices_bytes)?;
+
+    let shader = shader_load(particles::kernels::SCATTER_SURFACE_PATH)?;
+    let scatter = compute_create(shader)?;
+
+    let position_attr = geometry_attribute_position();
+    compute_set(
+        scatter,
+        "source_position",
+        shader_value::ShaderValue::MeshAttribute(source_geometry, position_attr),
+    )?;
+    compute_set(
+        scatter,
+        "source_indices",
+        shader_value::ShaderValue::Buffer(idx_buf),
+    )?;
+    compute_set(scatter, "cdf", shader_value::ShaderValue::Buffer(cdf_buf))?;
+    compute_set(
+        scatter,
+        "face_count",
+        shader_value::ShaderValue::UInt(face_count),
+    )?;
+    // A non-zero default seed; users can override with `compute_set(_, "seed", ...)`.
+    compute_set(scatter, "seed", shader_value::ShaderValue::UInt(0xc0ffeeu32))?;
+
+    Ok(scatter)
+}
+
+/// Sprinkle "Volume" mode analogue. Builds a scatter kernel that emits
+/// particles uniformly inside the source mesh's volume by AABB rejection
+/// sampling: pick a random point in the AABB, ray-cast through the mesh, and
+/// keep it if the parity (odd hits) says it's inside. Up to `max_attempts`
+/// retries per particle (set via `compute_set(_, "max_attempts", UInt(N))`;
+/// default 32).
+///
+/// The mesh must be closed for the parity test to be reliable. Cost scales
+/// as `O(face_count × max_attempts)` per emitted particle.
+///
+/// Like [`particles_scatter_create`], deinterleaves the source mesh asset.
+pub fn particles_scatter_volume_create(source_geometry: Entity) -> error::Result<Entity> {
+    let (indices_bytes, aabb_min, aabb_max, face_count) = app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(particles::prepare_scatter_volume_source, source_geometry)
+            .unwrap()
+    })?;
+
+    let idx_buf = buffer_create_with_data(indices_bytes)?;
+
+    let shader = shader_load(particles::kernels::SCATTER_VOLUME_PATH)?;
+    let scatter = compute_create(shader)?;
+
+    let position_attr = geometry_attribute_position();
+    compute_set(
+        scatter,
+        "source_position",
+        shader_value::ShaderValue::MeshAttribute(source_geometry, position_attr),
+    )?;
+    compute_set(
+        scatter,
+        "source_indices",
+        shader_value::ShaderValue::Buffer(idx_buf),
+    )?;
+    compute_set(
+        scatter,
+        "aabb_min",
+        shader_value::ShaderValue::Float4([aabb_min[0], aabb_min[1], aabb_min[2], 0.0]),
+    )?;
+    compute_set(
+        scatter,
+        "aabb_max",
+        shader_value::ShaderValue::Float4([aabb_max[0], aabb_max[1], aabb_max[2], 0.0]),
+    )?;
+    compute_set(
+        scatter,
+        "face_count",
+        shader_value::ShaderValue::UInt(face_count),
+    )?;
+    compute_set(
+        scatter,
+        "max_attempts",
+        shader_value::ShaderValue::UInt(32),
+    )?;
+    compute_set(scatter, "seed", shader_value::ShaderValue::UInt(0xc0ffeeu32))?;
+
+    Ok(scatter)
 }
 
 pub fn particles_destroy(entity: Entity) -> error::Result<()> {
