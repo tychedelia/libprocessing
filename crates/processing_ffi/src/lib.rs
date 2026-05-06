@@ -2461,6 +2461,71 @@ pub extern "C" fn processing_particles_scatter_volume_create(geometry_id: u64) -
         .unwrap_or(0)
 }
 
+/// Load a glTF / GLB file. `path` is resolved against the bevy asset server
+/// root (typically `<cwd>/assets/`). Returns a gltf entity (0 on error).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn processing_gltf_load(
+    graphics_id: u64,
+    path: *const std::ffi::c_char,
+) -> u64 {
+    error::clear_error();
+    error::check(|| {
+        let path = unsafe { cstr_to_str(path) }?;
+        gltf_load(Entity::from_bits(graphics_id), path)
+    })
+    .map(|e| e.to_bits())
+    .unwrap_or(0)
+}
+
+/// Look up a named mesh in a loaded glTF. Returns a geometry entity (0 on
+/// error).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn processing_gltf_geometry(
+    gltf_id: u64,
+    name: *const std::ffi::c_char,
+) -> u64 {
+    error::clear_error();
+    error::check(|| {
+        let name = unsafe { cstr_to_str(name) }?;
+        gltf_geometry(Entity::from_bits(gltf_id), name)
+    })
+    .map(|e| e.to_bits())
+    .unwrap_or(0)
+}
+
+/// Look up a named material in a loaded glTF. Returns a material entity (0
+/// on error).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn processing_gltf_material(
+    gltf_id: u64,
+    name: *const std::ffi::c_char,
+) -> u64 {
+    error::clear_error();
+    error::check(|| {
+        let name = unsafe { cstr_to_str(name) }?;
+        gltf_material(Entity::from_bits(gltf_id), name)
+    })
+    .map(|e| e.to_bits())
+    .unwrap_or(0)
+}
+
+/// Adopt the glTF's bundled camera at `index` as the active scene camera.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_gltf_camera(gltf_id: u64, index: u32) {
+    error::clear_error();
+    error::check(|| gltf_camera(Entity::from_bits(gltf_id), index as usize));
+}
+
+/// Spawn the glTF's bundled light at `index`. Returns a light entity (0 on
+/// error).
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_gltf_light(gltf_id: u64, index: u32) -> u64 {
+    error::clear_error();
+    error::check(|| gltf_light(Entity::from_bits(gltf_id), index as usize))
+        .map(|e| e.to_bits())
+        .unwrap_or(0)
+}
+
 /// Dispatch a compute kernel against the particles' attribute buffers.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_particles_apply(particles_id: u64, compute_id: u64) {
