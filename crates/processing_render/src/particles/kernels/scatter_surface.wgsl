@@ -1,9 +1,10 @@
 // Initializes particle positions by area-weighted random scatter on a source
 // mesh's surface. Sprinkle POP analogue. Dispatched via `particles_emit_gpu`.
 //
-// Particle attributes required: `position`, `age`, `dead`. The kernel resets
-// `age = 0` and `dead = 0` so freshly-emitted slots aren't skipped by an
-// aging pass on the next frame.
+// Particle attributes required: `position`, `scale`, `age`, `dead`. The
+// kernel resets `age = 0` and `dead = 0` so freshly-emitted slots aren't
+// skipped by an aging pass on the next frame, and seeds `scale = 1` so a
+// follow-up `attr_linear` decay produces the expected fade.
 //
 // Bindings:
 //   source_position: deinterleaved mesh position attribute (3 f32s / vertex).
@@ -28,10 +29,11 @@ struct Params {
 @group(0) @binding(1) var<storage, read>       source_indices:  array<u32>;
 @group(0) @binding(2) var<storage, read>       cdf:             array<f32>;
 @group(0) @binding(3) var<storage, read_write> position:        array<f32>;
-@group(0) @binding(4) var<storage, read_write> age:             array<f32>;
-@group(0) @binding(5) var<storage, read_write> dead:            array<f32>;
-@group(0) @binding(6) var<uniform>             params:          Params;
-@group(0) @binding(7) var<uniform>             emit_range:      vec4<f32>;
+@group(0) @binding(4) var<storage, read_write> scale:           array<f32>;
+@group(0) @binding(5) var<storage, read_write> age:             array<f32>;
+@group(0) @binding(6) var<storage, read_write> dead:            array<f32>;
+@group(0) @binding(7) var<uniform>             params:          Params;
+@group(0) @binding(8) var<uniform>             emit_range:      vec4<f32>;
 
 fn hash(n: u32) -> u32 {
     var x = n;
@@ -105,6 +107,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     position[slot * 3u + 0u] = p.x;
     position[slot * 3u + 1u] = p.y;
     position[slot * 3u + 2u] = p.z;
+    scale[slot * 3u + 0u] = 1.0;
+    scale[slot * 3u + 1u] = 1.0;
+    scale[slot * 3u + 2u] = 1.0;
     age[slot] = 0.0;
     dead[slot] = 0.0;
 }

@@ -2439,6 +2439,28 @@ pub extern "C" fn processing_particles_kernel_attr_lookup2d() -> u64 {
         .unwrap_or(0)
 }
 
+/// Sprinkle "Per Primitive" mode: surface scatter kernel from a source mesh.
+/// Mutates the source mesh asset to use deinterleaved vertex bindings.
+/// Returns a compute entity (0 on error).
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_scatter_create(geometry_id: u64) -> u64 {
+    error::clear_error();
+    error::check(|| particles_scatter_create(Entity::from_bits(geometry_id)))
+        .map(|e| e.to_bits())
+        .unwrap_or(0)
+}
+
+/// Sprinkle "Volume" mode: AABB rejection-sampling scatter kernel from a
+/// source mesh. Mutates the source mesh asset to use deinterleaved vertex
+/// bindings. Returns a compute entity (0 on error).
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_scatter_volume_create(geometry_id: u64) -> u64 {
+    error::clear_error();
+    error::check(|| particles_scatter_volume_create(Entity::from_bits(geometry_id)))
+        .map(|e| e.to_bits())
+        .unwrap_or(0)
+}
+
 /// Dispatch a compute kernel against the particles' attribute buffers.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_particles_apply(particles_id: u64, compute_id: u64) {
