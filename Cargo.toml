@@ -24,7 +24,7 @@ too_many_arguments = "allow"
 
 [workspace.dependencies]
 bevy = { git = "https://github.com/processing/bevy", branch = "main", features = ["file_watcher", "shader_format_wesl", "free_camera", "pan_camera"] }
-bevy_naga_reflect = { git = "https://github.com/tychedelia/bevy_naga_reflect" }
+bevy_naga_reflect = { path = "../../tychedelia/bevy_naga_reflect" }
 bevy_cuda = { git = "https://github.com/tychedelia/bevy_cuda" }
 naga = { version = "29", features = ["wgsl-in"] }
 wesl = { version = "0.3", default-features = false }
@@ -216,6 +216,18 @@ path = "examples/particles_scatter.rs"
 [[example]]
 name = "particles_scatter_volume"
 path = "examples/particles_scatter_volume.rs"
+
+[[example]]
+name = "particles_text_whirl"
+path = "examples/particles_text_whirl.rs"
+
+[[example]]
+name = "text"
+path = "examples/text.rs"
+
+[[example]]
+name = "text_3d"
+path = "examples/text_3d.rs"
 
 [profile.wasm-release]
 inherits = "release"

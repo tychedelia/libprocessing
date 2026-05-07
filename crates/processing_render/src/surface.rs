@@ -117,13 +117,22 @@ fn spawn_surface(
     let physical_width = (width as f32 * scale_factor) as u32;
     let physical_height = (height as f32 * scale_factor) as u32;
 
+    // only enable swapchain level transparency on platforms we know support it
+    // in theory all platforms should support it, but in practice some have weird issues
+    // TODO: dxgi swapchain for windows https://github.com/gfx-rs/wgpu/issues/3486
+    let (transparent, composite_alpha_mode) = match &raw_window_handle {
+        RawWindowHandle::AppKit(_) => (true, CompositeAlphaMode::PostMultiplied),
+        RawWindowHandle::Wayland(_) => (true, CompositeAlphaMode::PreMultiplied),
+        _ => (false, CompositeAlphaMode::Opaque),
+    };
+
     Ok(commands
         .spawn((
             Window {
                 resolution: WindowResolution::new(physical_width, physical_height)
                     .with_scale_factor_override(scale_factor),
-                transparent: true,
-                composite_alpha_mode: CompositeAlphaMode::PostMultiplied,
+                transparent,
+                composite_alpha_mode,
                 ..default()
             },
             handle_wrapper,
@@ -382,7 +391,6 @@ pub fn destroy(
     }
 }
 
-/// Update window size when resized.
 pub fn resize(
     In((window_entity, width, height)): In<(Entity, u32, u32)>,
     mut windows: Query<&mut Window>,
