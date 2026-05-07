@@ -691,9 +691,8 @@ mod mewnala {
         }
     }
 
-    // Color constructors — promoted to top-level so `from mewnala import *`
-    // exposes `hsva(...)`, `srgb(...)`, etc. directly. Living in a `color`
-    // submodule conflicted with the Processing-style `color()` function.
+    // top-level so `from mewnala import *` exposes hsva/srgb/etc. directly;
+    // a `color` submodule would clash with the `color()` function
 
     #[pyfunction]
     fn color_hex(s: &str) -> PyResult<PyColor> {
@@ -1155,8 +1154,8 @@ mod mewnala {
             Ok(())
         });
 
-        // Tear down the App while the thread-local is still alive — letting
-        // it run via the eager TLS destructor aborts inside a Bevy resource Drop.
+        // tear down the app while the thread-local is still alive; the eager
+        // TLS destructor aborts inside a Bevy resource drop
         let _ = ::processing::exit(0);
 
         result
@@ -1330,7 +1329,6 @@ mod mewnala {
         )
     }
 
-
     #[pyfunction(name = "color")]
     #[pyo3(pass_module, signature = (*args))]
     fn create_color(
@@ -1345,7 +1343,6 @@ mod mewnala {
             }
         }
     }
-
 
     #[pyfunction]
     #[pyo3(pass_module, signature = (*args))]

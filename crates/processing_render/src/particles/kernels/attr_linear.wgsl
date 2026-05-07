@@ -1,16 +1,11 @@
-// In-place per-particle scalar linear transform: op = op * scale + offset.
+// in-place per-particle scalar linear transform: op = op * scale + offset.
 //
-// Single-slot kernel: the destination attribute is bound to `op` (a
-// read_write storage). A WebGPU bind group can't hold the same buffer
-// as both `read` and `read_write` storage, so this kernel is built for
-// the in-place pattern (the dominant use case — decay, scale, fill).
+// single-slot kernel; destination is read_write. WebGPU forbids binding
+// the same buffer as both `read` and `read_write` in one bind group, so
+// this is built for the in-place pattern.
 //
-// With scale=1, offset=0 it's a no-op identity. With scale=0.965,
-// offset=0 it's a 3.5% per-dispatch decay. With scale=0, offset=k it
-// fills every slot with the constant k.
-//
-// `op` is a reserved namespaced name; it won't be auto-bound by
-// `particles_apply`, so the user must explicitly bind it via
+// op is a reserved namespaced name and won't be auto-bound by
+// particles_apply; the caller must explicitly bind via
 // `compute.set("op", buffer)`.
 
 struct Params {

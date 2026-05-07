@@ -1,5 +1,5 @@
-// Per-particle position displacement by sampled 3D value noise. With
-// `curl = 1`, displaces by the curl of the noise vector field instead —
+// per-particle position displacement by sampled 3D value noise. with
+// curl = 1, displaces by the curl of the noise vector field instead —
 // the result is divergence-free, so particles flow along streamlines
 // without piling up or dispersing.
 
@@ -47,9 +47,8 @@ fn noise3(p: vec3<f32>) -> vec3<f32> {
     ) * 2.0 - 1.0;
 }
 
-// Approximate curl of the 3D noise vector field via central differences.
-// 6 vector noise samples (18 hashes total) — significantly more expensive
-// than direct noise; only enable when divergence-free flow is desired.
+// curl of the 3D noise vector field via central differences. 6 vector
+// noise samples (18 hashes) — much more expensive than direct noise.
 fn curl_noise(p: vec3<f32>) -> vec3<f32> {
     let eps = 0.01;
     let dx = vec3<f32>(eps, 0.0, 0.0);

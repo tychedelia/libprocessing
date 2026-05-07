@@ -31,10 +31,10 @@ impl Plugin for ParticlesPlugin {
     }
 
     fn finish(&self, app: &mut App) {
-        // Mesh attribute and index buffers are bound to compute kernels (e.g.
-        // surface scatter, vertex displacement). The mesh allocator emits its
-        // GPU buffers before the render device exists, so we have to flip the
-        // STORAGE usage flag in `finish()` rather than `build()`.
+        // mesh attribute/index buffers feed compute kernels (scatter, vertex
+        // displacement). the mesh allocator emits its gpu buffers before the
+        // render device exists, so the STORAGE usage flag has to be flipped
+        // in finish() rather than build().
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
         };
@@ -48,11 +48,11 @@ impl Plugin for ParticlesPlugin {
 #[derive(Component)]
 pub struct Particles {
     pub capacity: u32,
-    /// `Attribute` entity → backing `compute::Buffer` entity.
+    /// `Attribute` entity to backing `compute::Buffer` entity.
     pub buffers: HashMap<Entity, Entity>,
-    /// Lazy persistent rasterization entity. Must outlive the per-frame draw
-    /// because `GpuInstanceBatchReservations` queue mesh batches one frame
-    /// behind, so respawning per-frame loses the reservation.
+    /// Persistent rasterization entity. Must outlive the per-frame draw:
+    /// `GpuInstanceBatchReservations` queues mesh batches one frame behind,
+    /// so respawning per-frame loses the reservation.
     pub draw_entity: Option<Entity>,
     /// Ring-buffer write cursor for `particles_emit`. Wraps at `capacity`.
     pub emit_head: u32,
@@ -103,9 +103,9 @@ pub fn create(
     Ok(entity)
 }
 
-/// Capacity = source mesh's vertex count. Registered attributes are seeded
-/// from the matching mesh attribute (by name + format); unmatched ones are
-/// zero-initialized.
+/// Capacity is the source mesh's vertex count. Registered attributes are
+/// seeded from the matching mesh attribute (by name + format); unmatched
+/// ones are zero-initialized.
 pub fn create_from_geometry(
     In((geom_entity, attribute_entities)): In<(Entity, Vec<Entity>)>,
     mut commands: Commands,
@@ -204,9 +204,9 @@ fn attribute_values_to_bytes(
     }
 }
 
-/// Shared by both scatter prepare systems: deinterleaves the mesh and pulls
-/// out positions + a dense `u32` index list. The dense index list sidesteps
-/// the mesh allocator's slab offset and any `u16` index format.
+// deinterleaves the mesh and pulls out positions + a dense u32 index list.
+// the dense index list sidesteps the mesh allocator's slab offset and any
+// u16 index format.
 fn extract_scatter_geometry(mesh: &mut Mesh) -> Result<(Vec<[f32; 3]>, Vec<u32>)> {
     mesh.deinterleave();
 
@@ -248,13 +248,12 @@ fn extract_scatter_geometry(mesh: &mut Mesh) -> Result<(Vec<[f32; 3]>, Vec<u32>)
     Ok((positions, dense_indices))
 }
 
-/// CPU side of `particles_scatter_create`: deinterleaves the source mesh so its
-/// position attribute becomes its own GPU buffer, then builds a normalized
-/// face-area CDF and a dense `u32` index list. The CDF lets a kernel pick a
-/// triangle in proportion to its area.
+/// CPU side of `particles_scatter_create`. Deinterleaves the source mesh so
+/// its position attribute becomes its own GPU buffer, then builds a normalized
+/// face-area CDF and a dense `u32` index list for area-weighted triangle
+/// sampling on the GPU.
 ///
-/// Returns `(cdf_bytes, indices_bytes, face_count)` for the caller to upload as
-/// regular storage buffers.
+/// Returns `(cdf_bytes, indices_bytes, face_count)`.
 pub fn prepare_scatter_source(
     In(geom_entity): In<Entity>,
     geometries: Query<&Geometry>,
@@ -300,7 +299,7 @@ pub fn prepare_scatter_source(
 }
 
 /// CPU side of `particles_scatter_volume_create`. Like
-/// [`prepare_scatter_source`] but returns the AABB instead of a CDF — volume
+/// [`prepare_scatter_source`] but returns the AABB instead of a CDF; volume
 /// scatter samples uniformly inside the AABB and rejection-tests against the
 /// mesh on the GPU.
 ///

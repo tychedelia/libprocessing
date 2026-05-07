@@ -1,21 +1,12 @@
-// In-place per-particle scalar lerp:
-//   op_a = mix(op_a, op_b, clamp(op_t * t_scale + t_offset, 0, 1)).
+// in-place per-particle scalar lerp:
+//   op_a = mix(op_a, op_b, clamp(op_t * t_scale + t_offset, 0, 1))
 //
-// `op_a` is the destination (read_write); `op_b` and `op_t` are
-// read-only. WebGPU disallows aliasing a read_write buffer with
-// another binding in the same bind group, so `op_a`, `op_b`, and
-// `op_t` must point at distinct buffers. Set `t_clamp = 0u` to skip
-// the [0, 1] clamp on `t` (useful for additive blends).
+// op_a, op_b, op_t must point at distinct buffers (WebGPU buffer-aliasing
+// rule). set t_clamp = 0u to skip the [0, 1] clamp on t (useful for
+// additive blends).
 //
-// Common patterns:
-//   - Conditional write: `op_t` is 0 outside a region, 1 inside (e.g.
-//     output of `kernelField` with hard falloff); `op_b` is the new
-//     value. Result: only inside-region particles get `op_b`.
-//   - Soft fade: `op_t` is a continuous falloff weight; `op_a` /
-//     `op_b` are start/end states.
-//
-// `op_a`, `op_b`, `op_t` are reserved namespaced names; they won't be
-// auto-bound by `particles_apply`.
+// op_a, op_b, op_t are reserved namespaced names and won't be auto-bound
+// by particles_apply.
 
 struct Params {
     t_scale: f32,

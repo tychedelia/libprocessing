@@ -1,6 +1,6 @@
 //! Compute pass that writes [`Particles`] position/rotation/scale/life into
-//! the per-instance slots reserved by [`GpuBatchedMesh3d`]. Pipelines are
-//! cached per `(HAS_ROTATION, HAS_SCALE, HAS_LIFE)` shader_def combination.
+//! the per-instance slots reserved by `GpuBatchedMesh3d`. Pipelines are cached
+//! per `(HAS_ROTATION, HAS_SCALE, HAS_LIFE)` shader_def combination.
 
 use std::num::NonZeroU64;
 
@@ -66,8 +66,8 @@ impl Plugin for ParticlesPackPlugin {
 #[derive(Resource, Clone)]
 pub struct ParticlesPackShader(pub Handle<Shader>);
 
-/// Specialization key — controls which `#ifdef`s are set when compiling the pack shader,
-/// and which bindings are present in the bind-group layout.
+/// Specialization key. Selects which `#ifdef`s are set when compiling the pack
+/// shader, and which bindings are present in the bind-group layout.
 #[derive(Hash, Eq, PartialEq, Clone, Copy, Debug)]
 pub struct PackPipelineKey {
     pub has_rotation: bool,

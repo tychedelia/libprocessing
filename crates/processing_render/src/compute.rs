@@ -314,10 +314,9 @@ pub fn set_compute_property(
         .get_mut(entity)
         .map_err(|_| ProcessingError::ComputeNotFound)?;
 
-    // Resource values (buffers / textures) bind directly to top-level parameters
-    // and need a category check. Scalar / vector / matrix values may target
-    // either a top-level uniform or a nested struct field (e.g. `params.dt`),
-    // so we let `apply_reflect_field` handle the path resolution itself.
+    // resource values bind to top-level parameters; scalar/vector/matrix
+    // values may target nested struct fields (e.g. `params.dt`) and route
+    // through `apply_reflect_field` for path resolution.
     match value {
         ShaderValue::Buffer(buf_entity) => {
             let category = compute
@@ -395,9 +394,8 @@ pub fn set_compute_property(
                 .parameter(&name)
                 .map(|p| p.category())
                 .ok_or_else(|| ProcessingError::UnknownShaderProperty(name.clone()))?;
-            // `ShaderValue::Texture` binds an image. For `Sampler` slots we
-            // reuse the image's own sampler (bevy_naga_reflect resolves the
-            // sampler resource from the image handle automatically).
+            // for `Sampler` slots, the image's own sampler is reused
+            // (bevy_naga_reflect resolves it from the image handle).
             if !matches!(
                 category,
                 ParameterCategory::Texture
@@ -549,9 +547,8 @@ fn resolve_mesh_binding(
     }
 }
 
-/// Resolve a [`Compute`]'s [`MeshBindingRef`]s against the main world. Used by
-/// the public `compute_dispatch` entry point before crossing into the render
-/// world.
+/// Resolve a [`Compute`]'s [`MeshBindingRef`]s against the main world before
+/// crossing into the render world.
 pub fn resolve_mesh_bindings(
     world: &World,
     compute: &Compute,

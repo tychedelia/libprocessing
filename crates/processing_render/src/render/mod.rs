@@ -1257,7 +1257,7 @@ pub fn flush_draw_commands(
                     max_w,
                     max_h,
                 } => {
-                    // Apply rectMode to bounding box form
+                    // apply rectMode to the bounding box form
                     let (x, y, max_w, max_h) = if let (Some(w), Some(h)) = (max_w, max_h) {
                         let (bx, by, bw, bh) = apply_shape_mode(state.rect_mode, x, y, w, h);
                         (bx, by, Some(bw), Some(bh))

@@ -148,8 +148,7 @@ def setup():
         ],
     )
 
-    # Zero-fill of `life` parks unemitted slots automatically (life=0 = culled).
-
+    # zero-init of `life` culls unemitted slots
     color_buf = p.buffer(Attribute.color())
     mat = Material.pbr(albedo=color_buf)
 

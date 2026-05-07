@@ -1,21 +1,10 @@
-// Per-particle scalar weight based on distance to a sphere primitive.
-// Writes to a per-particle attribute named `weight: f32`. Particles
-// outside the sphere get `0`; particles inside get a value in `(0, 1]`
-// according to `falloff_mode`:
+// per-particle scalar weight from distance to a sphere primitive. writes
+// `weight: f32`. outside the sphere = 0; inside = (0, 1] per falloff_mode:
 //   0 = hard       (1 inside, 0 outside)
 //   1 = linear     (1 - d/r)
-//   2 = smoothstep (smoothstep((1 - d/r)))
+//   2 = smoothstep (smoothstep(1 - d/r))
 //   3 = quadratic  ((1 - d/r)^2)
 //   4 = cubic      ((1 - d/r)^3)
-//
-// Used as input to other kernels — e.g., as the `t` in an AttrMath mix
-// for conditional writes, or as a charge accumulator via max.
-//
-// Convention: writes to an attribute named `weight`. To accumulate the
-// outputs of multiple kernelField passes into different attributes, copy
-// `weight` to another attribute between calls (an upcoming AttrMath
-// kernel will provide a clean copy primitive; for now use a tiny
-// custom kernel).
 
 struct Params {
     center: vec3<f32>,

@@ -45,7 +45,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     let seed = base + local_i;
 
-    // Random unit-disc direction with some upward bias.
+    // unit-disc dir with upward bias
     let theta = hash_unit(seed) * 6.2831853;
     let r     = sqrt(hash_unit(seed * 2u + 1u));
     let dirxz = vec2<f32>(cos(theta), sin(theta)) * r;
@@ -156,9 +156,6 @@ fn sketch() -> error::Result<()> {
         ],
     )?;
 
-    // Zero-fill of `life` is "culled" — unemitted slots stay hidden until the
-    // spawn kernel writes life=1.
-
     let color_buf = particles_buffer(p, color_attr)?
         .ok_or(error::ProcessingError::ParticlesNotFound)?;
     let mat = { let m = material_create_pbr()?; material_set_albedo_buffer(m, color_buf)?; m };
@@ -189,7 +186,6 @@ fn sketch() -> error::Result<()> {
         )?;
         graphics_end_draw(graphics)?;
 
-        // Animate spawn point in a small circle so the fountain meanders.
         let t = start.elapsed().as_secs_f32();
         let sx = t.cos() * 0.4;
         let sz = t.sin() * 0.4;

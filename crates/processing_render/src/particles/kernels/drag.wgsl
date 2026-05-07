@@ -1,5 +1,5 @@
-// Velocity damping. Each dispatch, velocity *= (1 - coefficient). With
-// `velocity_cap > 0`, also clamps the resulting speed.
+// velocity damping. each dispatch, velocity *= (1 - coefficient).
+// velocity_cap > 0 also clamps the resulting speed.
 
 struct Params {
     coefficient: f32,

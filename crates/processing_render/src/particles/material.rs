@@ -1,6 +1,6 @@
-//! Per-particle albedo and emissive on top of `StandardMaterial`. The `unlit`
-//! flag on the base material toggles between lit and unlit;
-//! `apply_pbr_lighting` short-circuits when set.
+//! Per-particle albedo and emissive on top of `StandardMaterial`. The base
+//! material's `unlit` flag toggles lit vs unlit; `apply_pbr_lighting`
+//! short-circuits when set.
 
 use std::ops::Deref;
 

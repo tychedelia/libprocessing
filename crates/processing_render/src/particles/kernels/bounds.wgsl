@@ -1,10 +1,9 @@
-// Sphere bounds. For particles outside `radius` of `center`, applies one
-// of four modes:
+// sphere bounds. for particles outside radius of center:
 //   0 = clamp:   snap to surface, zero outward velocity component
 //   1 = reflect: snap to surface, flip outward velocity component
 //   2 = wrap:    teleport to the opposite side
 //   3 = soft:    add a force toward the surface proportional to overshoot
-// `velocity_cap > 0` then additionally clamps |velocity|.
+// velocity_cap > 0 then additionally clamps |velocity|.
 
 struct Params {
     center: vec3<f32>,
@@ -38,20 +37,17 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         let normal = offset / d;
 
         if params.mode == 0u {
-            // Clamp
             pos = params.center + normal * params.radius;
             let outward = max(0.0, dot(vel, normal));
             vel = vel - normal * outward;
         } else if params.mode == 1u {
-            // Reflect
             pos = params.center + normal * params.radius;
             let outward = max(0.0, dot(vel, normal));
             vel = vel - normal * (2.0 * outward);
         } else if params.mode == 2u {
-            // Wrap
             pos = params.center - normal * params.radius;
         } else {
-            // Soft pull (default for any other value)
+            // soft pull, default for any other value
             vel = vel - normal * (params.soft_strength * (d - params.radius));
         }
     }

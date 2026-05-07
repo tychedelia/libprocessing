@@ -70,12 +70,10 @@ fn sketch() -> error::Result<()> {
                 positions.push((x as f32 - 2.0) * 1.6);
                 positions.push((y as f32 - 2.0) * 1.6);
                 positions.push((z as f32 - 2.0) * 1.6);
-                // identity quat
                 rotations.push(0.0);
                 rotations.push(0.0);
                 rotations.push(0.0);
                 rotations.push(1.0);
-                // scale varies per position
                 let s = 0.5 + ((x + y + z) as f32 * 0.06);
                 scales.push(s);
                 scales.push(s);

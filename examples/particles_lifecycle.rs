@@ -27,12 +27,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
 
     age[i] = age[i] + dt;
-    // gravity-ish drop
     position[i * 3u + 1u] = position[i * 3u + 1u] - dt * 1.5;
 
-    // Shrink toward zero as age approaches ttl so dying is visible.
     let remaining = clamp(1.0 - age[i] / ttl, 0.0, 1.0);
-    let s = remaining * remaining;  // ease out
+    let s = remaining * remaining;
     scale[i * 3u + 0u] = s;
     scale[i * 3u + 1u] = s;
     scale[i * 3u + 2u] = s;
@@ -80,14 +78,11 @@ fn sketch() -> error::Result<()> {
     )?;
     let color_buf = particles_buffer(p, color_attr)?
         .ok_or(error::ProcessingError::ParticlesNotFound)?;
-    // Zero-fill of `life` is "culled" — unemitted ring slots stay hidden
-    // until the per-frame emit writes life=1.
 
     let mat = { let m = material_create_unlit()?; material_set_albedo_buffer(m, color_buf)?; m };
     let aging_shader = shader_create(AGING_SHADER)?;
     let aging = compute_create(aging_shader)?;
 
-    // burst × (ttl × 60) ≈ steady-state alive count (~360 here, well under capacity 800).
     let burst: u32 = 6;
     let dt: f32 = 1.0 / 60.0;
     let ttl: f32 = 1.0;
@@ -106,12 +101,10 @@ fn sketch() -> error::Result<()> {
         )?;
         graphics_end_draw(graphics)?;
 
-        // Spawn `burst` new particles per frame in a small fountain.
         let mut positions: Vec<f32> = Vec::with_capacity(burst as usize * 3);
         let mut colors: Vec<f32> = Vec::with_capacity(burst as usize * 4);
         for k in 0..burst {
             let i = frame * burst + k;
-            // Cheap pseudo-random offset.
             let u = ((i.wrapping_mul(2654435761) >> 8) & 0xFFFF) as f32 / 65535.0;
             let v = ((i.wrapping_mul(40503) >> 8) & 0xFFFF) as f32 / 65535.0;
             let theta = u * std::f32::consts::TAU;
@@ -130,8 +123,6 @@ fn sketch() -> error::Result<()> {
         let color_bytes: Vec<u8> = colors.iter().flat_map(|f| f.to_le_bytes()).collect();
         let zero_floats: Vec<u8> = (0..burst).flat_map(|_| 0.0_f32.to_le_bytes()).collect();
         let one_floats: Vec<u8> = (0..burst).flat_map(|_| 1.0_f32.to_le_bytes()).collect();
-        // Reset scale to 1 for newly emitted particles (the aging shader will
-        // shrink them as age progresses).
         let one_scale: Vec<u8> = (0..burst)
             .flat_map(|_| {
                 [1.0_f32, 1.0, 1.0]
@@ -152,7 +143,6 @@ fn sketch() -> error::Result<()> {
             ],
         )?;
 
-        // Age + drop + kill.
         compute_set(
             aging,
             "params",

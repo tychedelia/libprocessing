@@ -1,23 +1,12 @@
-// Per-particle 1D ramp lookup: out = sample(ramp, t) where
-// t = clamp(in_attr * scale + offset, 0, 1).
+// per-particle 1D ramp lookup:
+//   out = sample(ramp, t) where t = clamp(in_attr * scale + offset, 0, 1)
 //
-// Generic-slot kernel. The user binds:
-//   - `op_in`: scalar (f32) input attribute used as the lookup coord
-//   - `ramp`: a texture (typically 1D or N×1) used as the ramp
-//   - `op_out_*`: one or more scalar output attributes for the sampled
-//     channels (we expose r/g/b/a as separate slots so the caller can
-//     write into separate Float attributes — or omit channels they
-//     don't need by binding the same buffer as a scratch).
+// to skip channels, bind the same buffer to multiple op_out_* slots —
+// bevy_naga_reflect only complains about unbound declared slots, not
+// over-bound buffers.
 //
-// To skip channels you don't care about, bind the same buffer to
-// multiple `op_out_*` slots — bevy_naga_reflect only complains if a
-// declared slot is unbound, not if a buffer is over-bound. (Or, for a
-// cleaner setup, define an unused scratch attribute on the particle
-// system and bind it.)
-//
-// `ramp` is sampled as a 2D texture at v=0.5 so it works with both 2D
-// 1×N gradient textures (the common case in Processing) and proper 1D
-// textures (read as 2D with height 1).
+// ramp is sampled as a 2D texture at v=0.5 so it works with both 2D 1×N
+// gradient textures and proper 1D textures (read as 2D with height 1).
 
 struct Params {
     scale: f32,

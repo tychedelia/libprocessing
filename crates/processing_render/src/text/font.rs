@@ -9,7 +9,7 @@ pub struct Font {
     pub family_name: String,
 }
 
-/// Shared text context resource containing parley's font and layout contexts.
+/// Shared parley font and layout contexts.
 #[derive(Resource, Clone)]
 pub struct TextContext {
     inner: Arc<Mutex<TextContextInner>>,
@@ -24,7 +24,7 @@ impl TextContext {
     pub fn new() -> Self {
         let mut font_cx = FontContext::default();
 
-        // Register the embedded NotoSans as default font
+        // embedded default
         font_cx
             .collection
             .register_fonts(notosans::REGULAR_TTF.to_vec().into(), None);
@@ -38,7 +38,7 @@ impl TextContext {
     }
 
     /// Access the font and layout contexts together via a closure.
-    /// We split the struct to avoid double-mutable-borrow issues.
+    // split fields so the closure can borrow both mutably
     pub fn with<R>(&self, f: impl FnOnce(&mut FontContext, &mut LayoutContext<Color>) -> R) -> R {
         let mut inner = self.inner.lock().unwrap();
         let TextContextInner {

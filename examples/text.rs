@@ -5,16 +5,8 @@ use processing::prelude::*;
 use processing_render::render::command::DrawCommand;
 
 fn main() {
-    match sketch() {
-        Ok(_) => {
-            eprintln!("Sketch completed successfully");
-            exit(0).unwrap();
-        }
-        Err(e) => {
-            eprintln!("Sketch error: {:?}", e);
-            exit(1).unwrap();
-        }
-    };
+    sketch().unwrap();
+    exit(0).unwrap();
 }
 
 fn sketch() -> error::Result<()> {
@@ -29,16 +21,10 @@ fn sketch() -> error::Result<()> {
     while glfw_ctx.poll_events() {
         graphics_begin_draw(graphics)?;
 
-        // White background
         graphics_record_command(graphics, DrawCommand::BackgroundColor(Color::WHITE))?;
-
-        // Set fill to black for text
         graphics_record_command(graphics, DrawCommand::Fill(Color::BLACK))?;
 
-        // Set text size
         graphics_record_command(graphics, DrawCommand::TextSize(32.0))?;
-
-        // Draw text
         graphics_record_command(
             graphics,
             DrawCommand::Text {
@@ -51,9 +37,7 @@ fn sketch() -> error::Result<()> {
             },
         )?;
 
-        // Smaller text
         graphics_record_command(graphics, DrawCommand::TextSize(18.0))?;
-
         graphics_record_command(
             graphics,
             DrawCommand::Text {
@@ -66,9 +50,7 @@ fn sketch() -> error::Result<()> {
             },
         )?;
 
-        // Text with bounding box (word wrap)
         graphics_record_command(graphics, DrawCommand::TextSize(16.0))?;
-
         graphics_record_command(
             graphics,
             DrawCommand::Text {
@@ -81,7 +63,6 @@ fn sketch() -> error::Result<()> {
             },
         )?;
 
-        // Center-aligned text
         graphics_record_command(
             graphics,
             DrawCommand::TextAlign {
@@ -90,7 +71,6 @@ fn sketch() -> error::Result<()> {
             },
         )?;
         graphics_record_command(graphics, DrawCommand::TextSize(24.0))?;
-
         graphics_record_command(
             graphics,
             DrawCommand::Text {

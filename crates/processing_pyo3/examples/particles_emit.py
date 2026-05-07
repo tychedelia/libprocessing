@@ -21,7 +21,7 @@ def setup():
         attributes=[Attribute.position(), Attribute.color()],
     )
 
-    # Park unemitted slots far off-screen until the ring buffer fills.
+    # park unemitted slots off-screen until the ring fills
     pos_buf = p.buffer(Attribute.position())
     pos_buf.write([1.0e6] * (capacity * 3))
 
@@ -38,7 +38,6 @@ def draw():
     use_material(mat)
     particles(p, sphere)
 
-    # Emit 4 particles per frame in an outward-spiraling ring.
     burst = 4
     positions = []
     colors = []

@@ -1,19 +1,11 @@
-// Per-particle 2D ramp lookup: op_out = sample(ramp, (u, v)) * color_scale.
+// per-particle 2D ramp lookup:
+//   op_out = sample(ramp, (u, v)) * color_scale
 //
-// Generic-slot kernel. The user binds:
-//   - `op_in_u`: scalar (f32) attribute providing the u lookup coord
-//   - `op_in_v`: scalar (f32) attribute providing the v lookup coord
-//   - `op_out`: vec4 attribute (e.g., the emissive buffer) — the
-//     destination is read_write and must NOT alias either input
-//     (WebGPU buffer-aliasing rule)
-//   - `ramp`: a 2D texture (e.g., a 256 × N HDR LUT)
-//   - `ramp_sampler`: bind to the same image as `ramp` — the texture's
-//     own sampler is reused
+// op_out is read_write and must NOT alias either input (WebGPU
+// buffer-aliasing rule).
 //
-// Coordinates are computed as:
 //   u = clamp(op_in_u[i] * u_scale + u_offset, 0, 1)
 //   v = clamp(op_in_v[i] * v_scale + v_offset, 0, 1)
-// then the sampled color is multiplied by `color_scale` (uniform).
 
 struct Params {
     u_scale: f32,

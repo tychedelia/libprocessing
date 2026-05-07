@@ -983,52 +983,41 @@ pub extern "C" fn processing_end_contour(graphics_id: u64) {
     error::check(|| graphics_record_command(graphics_entity, DrawCommand::EndContour));
 }
 
-// --- Font ---
-
-/// Load a font file and return a font entity ID.
-/// Returns 0 on error.
+/// Load a font file. Returns 0 on error.
 ///
 /// SAFETY:
-/// - path_ptr is a valid pointer to a null-terminated UTF-8 string.
+/// - `path_ptr` is a valid null-terminated UTF-8 C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_load_font(path_ptr: *const std::ffi::c_char) -> u64 {
     error::clear_error();
-    let path = unsafe { std::ffi::CStr::from_ptr(path_ptr) }
-        .to_string_lossy();
-    error::check(|| font_load(&path).map(|e| e.to_bits()))
-        .unwrap_or(0)
+    let path = unsafe { std::ffi::CStr::from_ptr(path_ptr) }.to_string_lossy();
+    error::check(|| font_load(&path).map(|e| e.to_bits())).unwrap_or(0)
 }
 
-/// Create a font handle from an existing font family name.
-/// Returns 0 on error.
+/// Create a font handle from a font family name. Returns 0 on error.
 ///
 /// SAFETY:
-/// - name_ptr is a valid pointer to a null-terminated UTF-8 string.
+/// - `name_ptr` is a valid null-terminated UTF-8 C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_create_font(name_ptr: *const std::ffi::c_char) -> u64 {
     error::clear_error();
-    let name = unsafe { std::ffi::CStr::from_ptr(name_ptr) }
-        .to_string_lossy();
-    error::check(|| font_create(&name).map(|e| e.to_bits()))
-        .unwrap_or(0)
+    let name = unsafe { std::ffi::CStr::from_ptr(name_ptr) }.to_string_lossy();
+    error::check(|| font_create(&name).map(|e| e.to_bits())).unwrap_or(0)
 }
 
-/// Query the number of variable font axes for a font.
-/// Returns 0 if the font is not variable or not found.
+/// Returns the number of variable font axes, or 0 if not variable / not found.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_font_variation_count(font_id: u64) -> u32 {
     error::clear_error();
     let font_entity = Entity::from_bits(font_id);
-    error::check(|| font_variations(font_entity).map(|v| v.len() as u32))
-        .unwrap_or(0)
+    error::check(|| font_variations(font_entity).map(|v| v.len() as u32)).unwrap_or(0)
 }
 
-/// Query variable font axis info.
-/// Writes tag (4 bytes), min, max, default to out buffer at the given index.
+/// Write axis info (4-byte tag, min, max, default) for the axis at `index`.
 ///
 /// SAFETY:
-/// - out_tag is a valid pointer to at least 4 bytes.
-/// - out_min, out_max, out_default are valid pointers.
+/// - `out_tag` is valid for 4 bytes.
+/// - `out_min`, `out_max`, `out_default` are valid for one f32 each.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_font_variation(
     font_id: u64,
@@ -1060,8 +1049,7 @@ pub unsafe extern "C" fn processing_font_variation(
     false
 }
 
-/// Set the current text font.
-/// Pass 0 to reset to the default font.
+/// Set the current text font. Pass 0 to reset to the default font.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_text_font(graphics_id: u64, font_id: u64) {
     error::clear_error();
@@ -1074,13 +1062,10 @@ pub extern "C" fn processing_text_font(graphics_id: u64, font_id: u64) {
     error::check(|| graphics_text_font(graphics_entity, font_entity));
 }
 
-// --- Text ---
-
 /// Draw text at a position.
 ///
 /// SAFETY:
-/// - graphics_id is a valid ID returned from graphics_create.
-/// - str_ptr is a valid pointer to a null-terminated UTF-8 string.
+/// - `str_ptr` is a valid null-terminated UTF-8 C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_text(
     graphics_id: u64,
@@ -1111,8 +1096,7 @@ pub unsafe extern "C" fn processing_text(
 /// Draw text at a 3D position.
 ///
 /// SAFETY:
-/// - graphics_id is a valid ID returned from graphics_create.
-/// - str_ptr is a valid pointer to a null-terminated UTF-8 string.
+/// - `str_ptr` is a valid null-terminated UTF-8 C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_text_3d(
     graphics_id: u64,
@@ -1141,7 +1125,7 @@ pub unsafe extern "C" fn processing_text_3d(
     });
 }
 
-/// Draw an integer as text at a position.
+/// Draw an integer as text.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_text_int(graphics_id: u64, value: i32, x: f32, y: f32) {
     error::clear_error();
@@ -1162,7 +1146,7 @@ pub extern "C" fn processing_text_int(graphics_id: u64, value: i32, x: f32, y: f
     });
 }
 
-/// Draw a float as text at a position (formatted to 3 decimal places).
+/// Draw a float as text, formatted to 3 decimal places.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_text_float(graphics_id: u64, value: f32, x: f32, y: f32) {
     error::clear_error();
@@ -1183,11 +1167,10 @@ pub extern "C" fn processing_text_float(graphics_id: u64, value: f32, x: f32, y:
     });
 }
 
-/// Draw text within a bounding box (with word wrapping).
+/// Draw text within a bounding box, wrapping at word boundaries.
 ///
 /// SAFETY:
-/// - graphics_id is a valid ID returned from graphics_create.
-/// - str_ptr is a valid pointer to a null-terminated UTF-8 string.
+/// - `str_ptr` is a valid null-terminated UTF-8 C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_text_box(
     graphics_id: u64,
@@ -1217,7 +1200,7 @@ pub unsafe extern "C" fn processing_text_box(
     });
 }
 
-/// Set the text style. 0=NORMAL, 1=ITALIC, 2=BOLD, 3=BOLDITALIC
+/// Set the text style: 0=NORMAL, 1=ITALIC, 2=BOLD, 3=BOLDITALIC.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_text_style(graphics_id: u64, style: u8) {
     error::clear_error();
@@ -1225,12 +1208,11 @@ pub extern "C" fn processing_text_style(graphics_id: u64, style: u8) {
     error::check(|| graphics_text_style(graphics_entity, style));
 }
 
-/// Compute the bounding box of text. Writes [x, y, w, h] to out_bounds.
+/// Write the bounding box of text as `[x, y, w, h]` into `out_bounds`.
 ///
 /// SAFETY:
-/// - graphics_id is a valid ID returned from graphics_create.
-/// - str_ptr is a valid pointer to a null-terminated UTF-8 string.
-/// - out_bounds is a valid pointer to a float array of at least 4 elements.
+/// - `str_ptr` is a valid null-terminated UTF-8 C string.
+/// - `out_bounds` is valid for 4 f32 writes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_text_bounds(
     graphics_id: u64,
@@ -1255,10 +1237,10 @@ pub unsafe extern "C" fn processing_text_bounds(
     }
 }
 
-/// Set a font variation axis value (e.g. "wdth", 75.0).
+/// Set a variable-font axis value (e.g. "wdth", 75.0).
 ///
 /// SAFETY:
-/// - tag_ptr is a valid pointer to a null-terminated UTF-8 string of exactly 4 characters.
+/// - `tag_ptr` is a valid null-terminated UTF-8 C string (4 chars).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_text_variation(
     graphics_id: u64,
@@ -1271,7 +1253,7 @@ pub unsafe extern "C" fn processing_text_variation(
     error::check(|| graphics_text_variation(graphics_entity, &tag, value));
 }
 
-/// Clear all font variation axis overrides.
+/// Clear all variable-font axis overrides.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_clear_text_variations(graphics_id: u64) {
     error::clear_error();
@@ -1279,10 +1261,10 @@ pub extern "C" fn processing_clear_text_variations(graphics_id: u64) {
     error::check(|| graphics_clear_text_variations(graphics_entity));
 }
 
-/// Enable/configure an OpenType font feature (e.g. "smcp", 1).
+/// Enable an OpenType font feature (e.g. "smcp", 1).
 ///
 /// SAFETY:
-/// - tag_ptr is a valid pointer to a null-terminated UTF-8 string of exactly 4 characters.
+/// - `tag_ptr` is a valid null-terminated UTF-8 C string (4 chars).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_text_feature(
     graphics_id: u64,
@@ -1298,7 +1280,7 @@ pub unsafe extern "C" fn processing_text_feature(
 /// Disable an OpenType font feature.
 ///
 /// SAFETY:
-/// - tag_ptr is a valid pointer to a null-terminated UTF-8 string of exactly 4 characters.
+/// - `tag_ptr` is a valid null-terminated UTF-8 C string (4 chars).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_no_text_feature(
     graphics_id: u64,
@@ -1310,7 +1292,7 @@ pub unsafe extern "C" fn processing_no_text_feature(
     error::check(|| graphics_no_text_feature(graphics_entity, &tag));
 }
 
-/// Clear all OpenType font feature overrides.
+/// Clear all OpenType feature overrides.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_clear_text_features(graphics_id: u64) {
     error::clear_error();
@@ -1318,11 +1300,11 @@ pub extern "C" fn processing_clear_text_features(graphics_id: u64) {
     error::check(|| graphics_clear_text_features(graphics_entity));
 }
 
-/// Set per-glyph colors for the next text() call.
-/// colors_ptr points to an array of (r, g, b, a) float tuples.
+/// Set per-glyph colors for the next `text()` call. `colors_ptr` is an array
+/// of `(r, g, b, a)` float tuples.
 ///
 /// SAFETY:
-/// - colors_ptr is a valid pointer to count * 4 floats.
+/// - `colors_ptr` is valid for `count * 4` f32 reads.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_text_glyph_colors(
     graphics_id: u64,
@@ -1348,7 +1330,6 @@ pub extern "C" fn processing_text_weight(graphics_id: u64, weight: f32) {
     error::check(|| graphics_text_weight(graphics_entity, weight));
 }
 
-/// Set the text size.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_text_size(graphics_id: u64, size: f32) {
     error::clear_error();
@@ -1356,19 +1337,15 @@ pub extern "C" fn processing_text_size(graphics_id: u64, size: f32) {
     error::check(|| graphics_record_command(graphics_entity, DrawCommand::TextSize(size)));
 }
 
-/// Set the text alignment.
-/// h: 0=LEFT, 1=CENTER, 2=RIGHT
-/// v: 0=BASELINE, 1=TOP, 2=CENTER, 3=BOTTOM
+/// Set text alignment. `h`: 0=LEFT, 1=CENTER, 2=RIGHT. `v`: 0=BASELINE, 1=TOP,
+/// 2=CENTER, 3=BOTTOM.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_text_align(graphics_id: u64, h: u8, v: u8) {
     error::clear_error();
     let graphics_entity = Entity::from_bits(graphics_id);
-    error::check(|| {
-        graphics_text_align(graphics_entity, h, v)
-    });
+    error::check(|| graphics_text_align(graphics_entity, h, v));
 }
 
-/// Set the text leading (line spacing).
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_text_leading(graphics_id: u64, leading: f32) {
     error::clear_error();
@@ -1376,7 +1353,7 @@ pub extern "C" fn processing_text_leading(graphics_id: u64, leading: f32) {
     error::check(|| graphics_record_command(graphics_entity, DrawCommand::TextLeading(leading)));
 }
 
-/// Set the text direction. 0=AUTO, 1=LTR, 2=RTL
+/// Set text direction: 0=AUTO, 1=LTR, 2=RTL.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_text_direction(graphics_id: u64, dir: u8) {
     error::clear_error();
@@ -1384,7 +1361,7 @@ pub extern "C" fn processing_text_direction(graphics_id: u64, dir: u8) {
     error::check(|| graphics_text_direction(graphics_entity, dir));
 }
 
-/// Set the text wrap mode. 0=WORD, 1=CHAR
+/// Set text wrap mode: 0=WORD, 1=CHAR.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_text_wrap(graphics_id: u64, mode: u8) {
     error::clear_error();
@@ -1395,8 +1372,7 @@ pub extern "C" fn processing_text_wrap(graphics_id: u64, mode: u8) {
 /// Measure the width of text.
 ///
 /// SAFETY:
-/// - graphics_id is a valid ID returned from graphics_create.
-/// - str_ptr is a valid pointer to a null-terminated UTF-8 string.
+/// - `str_ptr` is a valid null-terminated UTF-8 C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_text_width(
     graphics_id: u64,
@@ -1404,28 +1380,22 @@ pub unsafe extern "C" fn processing_text_width(
 ) -> f32 {
     error::clear_error();
     let graphics_entity = Entity::from_bits(graphics_id);
-    let content = unsafe { std::ffi::CStr::from_ptr(str_ptr) }
-        .to_string_lossy();
-    error::check(|| graphics_text_width(graphics_entity, &content))
-        .unwrap_or(0.0)
+    let content = unsafe { std::ffi::CStr::from_ptr(str_ptr) }.to_string_lossy();
+    error::check(|| graphics_text_width(graphics_entity, &content)).unwrap_or(0.0)
 }
 
-/// Get the text ascent for the current font size.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_text_ascent(graphics_id: u64) -> f32 {
     error::clear_error();
     let graphics_entity = Entity::from_bits(graphics_id);
-    error::check(|| graphics_text_ascent(graphics_entity))
-        .unwrap_or(0.0)
+    error::check(|| graphics_text_ascent(graphics_entity)).unwrap_or(0.0)
 }
 
-/// Get the text descent for the current font size.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_text_descent(graphics_id: u64) -> f32 {
     error::clear_error();
     let graphics_entity = Entity::from_bits(graphics_id);
-    error::check(|| graphics_text_descent(graphics_entity))
-        .unwrap_or(0.0)
+    error::check(|| graphics_text_descent(graphics_entity)).unwrap_or(0.0)
 }
 
 /// Create an image from raw pixel data.
@@ -1456,18 +1426,14 @@ pub unsafe extern "C" fn processing_image_create(
     .unwrap_or(0)
 }
 
-/// Create an HDR image (`Rgba16Float`) from raw float pixel data. The
-/// caller passes interleaved RGBA f32 values (4 floats per pixel,
-/// `width * height * 4` total). Each f32 is packed to f16 before
-/// upload. Useful for procedural look-up tables that need values
-/// outside the sRGB [0, 1] range (e.g., emissive ramps that drive
-/// bloom).
+/// Create an HDR image (`Rgba16Float`) from interleaved RGBA f32 pixels.
+/// `floats_len` must equal `width * height * 4`. Each f32 is packed to f16
+/// before upload.
 ///
 /// # Safety
-/// - Init has been called.
-/// - `floats` points to `floats_len` f32 values (must equal
-///   `width * height * 4`).
-/// - This is called from the same thread as init.
+/// - `init` has been called.
+/// - `floats` is valid for `floats_len` f32 reads.
+/// - Called from the same thread as `init`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_image_create_hdr(
     width: u32,
@@ -1476,7 +1442,7 @@ pub unsafe extern "C" fn processing_image_create_hdr(
     floats_len: usize,
 ) -> u64 {
     error::clear_error();
-    // SAFETY: Caller must ensure `floats` is valid for `floats_len` f32 values.
+    // SAFETY: caller guarantees `floats` is valid for `floats_len` f32 values.
     let src = unsafe { std::slice::from_raw_parts(floats, floats_len) };
     error::check(|| {
         let mut packed = Vec::with_capacity(src.len() * 2);
@@ -1933,7 +1899,7 @@ pub extern "C" fn processing_geometry_attribute_life() -> u64 {
     geometry_attribute_life().to_bits()
 }
 
-/// Returns the format byte (1=Float, 2=Float2, 3=Float3, 4=Float4), 0 on error.
+/// Returns 1=Float, 2=Float2, 3=Float3, 4=Float4, or 0 on error.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_geometry_attribute_format(attr_id: u64) -> u8 {
     error::clear_error();
@@ -1949,13 +1915,13 @@ pub extern "C" fn processing_geometry_attribute_format(attr_id: u64) -> u8 {
     .unwrap_or(0)
 }
 
-/// Writes the attribute name to `out` (null-terminated). Returns the string
-/// length *excluding* the NUL terminator. If `out_cap` is too small the name is
-/// truncated but the full length is still returned.
+/// Write the attribute name (null-terminated) to `out`. Returns the byte
+/// length excluding the NUL. If `out_cap` is too small the name is truncated;
+/// the full length is still returned.
 ///
 /// # Safety
-/// - `out` must be valid for writes of `out_cap` bytes (may be null when
-///   `out_cap == 0` for a length query).
+/// - `out` is valid for `out_cap` byte writes (may be null when `out_cap == 0`
+///   for a length query).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_geometry_attribute_name(
     attr_id: u64,
@@ -2313,10 +2279,10 @@ pub extern "C" fn processing_material_create_pbr() -> u64 {
         .unwrap_or(0)
 }
 
-/// Set float value for `name` field on Material.
+/// Set a float field on a material.
 ///
 /// # Safety
-/// - `name` must be non-null
+/// - `name` is a valid null-terminated C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_material_set_float(
     mat_id: u64,
@@ -2334,10 +2300,10 @@ pub unsafe extern "C" fn processing_material_set_float(
     });
 }
 
-/// Set float4 value for `name` field on Material.
+/// Set a float4 field on a material.
 ///
 /// # Safety
-/// - `name` must be non-null
+/// - `name` is a valid null-terminated C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_material_set_float4(
     mat_id: u64,
@@ -2372,12 +2338,10 @@ pub extern "C" fn processing_material(window_id: u64, mat_id: u64) {
     error::check(|| graphics_record_command(window_entity, DrawCommand::Material(mat_entity)));
 }
 
-// Shader
-
 /// Create a shader from WGSL source.
 ///
 /// # Safety
-/// - `source` must be non-null
+/// - `source` is a valid null-terminated C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_shader_create(source: *const std::ffi::c_char) -> u64 {
     error::clear_error();
@@ -2392,7 +2356,7 @@ pub unsafe extern "C" fn processing_shader_create(source: *const std::ffi::c_cha
 /// Load a shader from a file path.
 ///
 /// # Safety
-/// - `path` must be non-null
+/// - `path` is a valid null-terminated C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_shader_load(path: *const std::ffi::c_char) -> u64 {
     error::clear_error();
@@ -2410,8 +2374,6 @@ pub extern "C" fn processing_shader_destroy(shader_id: u64) {
     error::check(|| shader_destroy(Entity::from_bits(shader_id)));
 }
 
-// Buffer
-
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_buffer_create(size: u64) -> u64 {
     error::clear_error();
@@ -2423,7 +2385,7 @@ pub extern "C" fn processing_buffer_create(size: u64) -> u64 {
 /// Create a buffer initialized with data.
 ///
 /// # Safety
-/// - `data` must point to `len` valid bytes
+/// - `data` is valid for `len` byte reads.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_buffer_create_with_data(data: *const u8, len: u64) -> u64 {
     error::clear_error();
@@ -2436,7 +2398,7 @@ pub unsafe extern "C" fn processing_buffer_create_with_data(data: *const u8, len
 /// Write data to a buffer.
 ///
 /// # Safety
-/// - `data` must point to `len` valid bytes
+/// - `data` is valid for `len` byte reads.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_buffer_write(buf_id: u64, data: *const u8, len: u64) {
     error::clear_error();
@@ -2444,19 +2406,19 @@ pub unsafe extern "C" fn processing_buffer_write(buf_id: u64, data: *const u8, l
     error::check(|| buffer_write(Entity::from_bits(buf_id), bytes));
 }
 
-/// Returns the byte length of a buffer, or 0 if the buffer does not exist
-/// (in which case the error is set).
+/// Returns the byte length of a buffer, or 0 if not found (error is set).
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_buffer_size(buf_id: u64) -> u64 {
     error::clear_error();
     error::check(|| buffer_size(Entity::from_bits(buf_id))).unwrap_or(0)
 }
 
-/// Read buffer contents into a caller-provided buffer.
+/// Read buffer contents into `out`. Returns the buffer's byte length;
+/// `out` is only written when it fits in `out_len`. Pass `out_len == 0` for a
+/// size query.
 ///
 /// # Safety
-/// - `out` must be valid for writes of `out_len` bytes (may be null if
-///   `out_len == 0`, in which case this acts as a size query).
+/// - `out` is valid for `out_len` byte writes (may be null when `out_len == 0`).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_buffer_read(buf_id: u64, out: *mut u8, out_len: u64) -> u64 {
     error::clear_error();
@@ -2476,8 +2438,6 @@ pub extern "C" fn processing_buffer_destroy(buf_id: u64) {
     error::check(|| buffer_destroy(Entity::from_bits(buf_id)));
 }
 
-// Compute
-
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_compute_create(shader_id: u64) -> u64 {
     error::clear_error();
@@ -2486,10 +2446,10 @@ pub extern "C" fn processing_compute_create(shader_id: u64) -> u64 {
         .unwrap_or(0)
 }
 
-/// Set a float property on a compute shader.
+/// Set a float uniform on a compute shader.
 ///
 /// # Safety
-/// - `name` must be non-null
+/// - `name` is a valid null-terminated C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_compute_set_float(
     compute_id: u64,
@@ -2507,10 +2467,10 @@ pub unsafe extern "C" fn processing_compute_set_float(
     });
 }
 
-/// Set a vec3 property on a compute shader.
+/// Set a vec3 uniform on a compute shader.
 ///
 /// # Safety
-/// - `name` must be non-null
+/// - `name` is a valid null-terminated C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_compute_set_float3(
     compute_id: u64,
@@ -2530,10 +2490,10 @@ pub unsafe extern "C" fn processing_compute_set_float3(
     });
 }
 
-/// Set a u32 property on a compute shader.
+/// Set a u32 uniform on a compute shader.
 ///
 /// # Safety
-/// - `name` must be non-null
+/// - `name` is a valid null-terminated C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_compute_set_uint(
     compute_id: u64,
@@ -2551,10 +2511,10 @@ pub unsafe extern "C" fn processing_compute_set_uint(
     });
 }
 
-/// Set an i32 property on a compute shader.
+/// Set an i32 uniform on a compute shader.
 ///
 /// # Safety
-/// - `name` must be non-null
+/// - `name` is a valid null-terminated C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_compute_set_int(
     compute_id: u64,
@@ -2572,8 +2532,10 @@ pub unsafe extern "C" fn processing_compute_set_int(
     });
 }
 
+/// Bind a storage buffer to a compute shader binding.
+///
 /// # Safety
-/// `name` must be a valid null-terminated C string.
+/// - `name` is a valid null-terminated C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_compute_set_buffer(
     compute_id: u64,
@@ -2591,8 +2553,10 @@ pub unsafe extern "C" fn processing_compute_set_buffer(
     });
 }
 
+/// Bind a texture to a compute shader binding.
+///
 /// # Safety
-/// `name` must be a valid null-terminated C string.
+/// - `name` is a valid null-terminated C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_compute_set_texture(
     compute_id: u64,
@@ -2622,12 +2586,10 @@ pub extern "C" fn processing_compute_destroy(compute_id: u64) {
     error::check(|| compute_destroy(Entity::from_bits(compute_id)));
 }
 
-// Particles
-
 /// Create a particle system with the given capacity and attribute set.
 ///
 /// # Safety
-/// - `attr_ids` must point to `attr_count` valid u64 values
+/// - `attr_ids` is valid for `attr_count` u64 reads.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_particles_create(
     capacity: u32,
@@ -2651,7 +2613,7 @@ pub unsafe extern "C" fn processing_particles_create(
 /// Create a particle system seeded from geometry vertex data.
 ///
 /// # Safety
-/// - `attr_ids` must point to `attr_count` valid u64 values
+/// - `attr_ids` is valid for `attr_count` u64 reads.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_particles_create_from_geometry(
     geo_id: u64,
@@ -2697,13 +2659,13 @@ pub extern "C" fn processing_particles_buffer(particles_id: u64, attr_id: u64) -
 }
 
 /// CPU-driven emission. Writes per-attribute byte payloads into the next `n`
-/// ring-buffer slots. `data` is a concatenated byte buffer; `attr_byte_lengths[i]`
-/// gives the byte length of the i-th attribute's portion.
+/// ring-buffer slots. `data` is the concatenated payload;
+/// `attr_byte_lengths[i]` gives the i-th attribute's portion length.
 ///
 /// # Safety
-/// - `attr_ids` must point to `attr_count` valid u64 values
-/// - `data` must point to `data_len` valid bytes
-/// - `attr_byte_lengths` must point to `attr_count` valid u64 values
+/// - `attr_ids` is valid for `attr_count` u64 reads.
+/// - `attr_byte_lengths` is valid for `attr_count` u64 reads.
+/// - `data` is valid for `sum(attr_byte_lengths)` byte reads.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_particles_emit(
     particles_id: u64,
@@ -2749,144 +2711,98 @@ pub extern "C" fn processing_particles_emit_gpu(
     });
 }
 
-/// Built-in noise kernel. Returns a compute entity (0 on error).
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_particles_kernel_noise() -> u64 {
     error::clear_error();
-    error::check(particles_kernel_noise)
-        .map(|e| e.to_bits())
-        .unwrap_or(0)
+    error::check(particles_kernel_noise).map(|e| e.to_bits()).unwrap_or(0)
 }
 
-/// Built-in transform kernel. Returns a compute entity (0 on error).
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_particles_kernel_transform() -> u64 {
     error::clear_error();
-    error::check(particles_kernel_transform)
-        .map(|e| e.to_bits())
-        .unwrap_or(0)
+    error::check(particles_kernel_transform).map(|e| e.to_bits()).unwrap_or(0)
 }
 
-/// Built-in attractor / repeller kernel. Returns a compute entity (0 on error).
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_particles_kernel_attract() -> u64 {
     error::clear_error();
-    error::check(particles_kernel_attract)
-        .map(|e| e.to_bits())
-        .unwrap_or(0)
+    error::check(particles_kernel_attract).map(|e| e.to_bits()).unwrap_or(0)
 }
 
-/// Built-in drag kernel. Returns a compute entity (0 on error).
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_particles_kernel_drag() -> u64 {
     error::clear_error();
-    error::check(particles_kernel_drag)
-        .map(|e| e.to_bits())
-        .unwrap_or(0)
+    error::check(particles_kernel_drag).map(|e| e.to_bits()).unwrap_or(0)
 }
 
-/// Built-in vortex kernel. Returns a compute entity (0 on error).
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_particles_kernel_vortex() -> u64 {
     error::clear_error();
-    error::check(particles_kernel_vortex)
-        .map(|e| e.to_bits())
-        .unwrap_or(0)
+    error::check(particles_kernel_vortex).map(|e| e.to_bits()).unwrap_or(0)
 }
 
-/// Built-in bounds kernel (sphere). Returns a compute entity (0 on error).
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_particles_kernel_bounds() -> u64 {
     error::clear_error();
-    error::check(particles_kernel_bounds)
-        .map(|e| e.to_bits())
-        .unwrap_or(0)
+    error::check(particles_kernel_bounds).map(|e| e.to_bits()).unwrap_or(0)
 }
 
-/// Built-in impulse kernel. Returns a compute entity (0 on error).
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_particles_kernel_impulse() -> u64 {
     error::clear_error();
-    error::check(particles_kernel_impulse)
-        .map(|e| e.to_bits())
-        .unwrap_or(0)
+    error::check(particles_kernel_impulse).map(|e| e.to_bits()).unwrap_or(0)
 }
 
-/// Built-in flocking kernel. Returns a compute entity (0 on error).
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_particles_kernel_flock() -> u64 {
     error::clear_error();
-    error::check(particles_kernel_flock)
-        .map(|e| e.to_bits())
-        .unwrap_or(0)
+    error::check(particles_kernel_flock).map(|e| e.to_bits()).unwrap_or(0)
 }
 
-/// Built-in orient kernel. Returns a compute entity (0 on error).
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_particles_kernel_orient() -> u64 {
     error::clear_error();
-    error::check(particles_kernel_orient)
-        .map(|e| e.to_bits())
-        .unwrap_or(0)
+    error::check(particles_kernel_orient).map(|e| e.to_bits()).unwrap_or(0)
 }
 
-/// Built-in field kernel. Returns a compute entity (0 on error).
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_particles_kernel_field() -> u64 {
     error::clear_error();
-    error::check(particles_kernel_field)
-        .map(|e| e.to_bits())
-        .unwrap_or(0)
+    error::check(particles_kernel_field).map(|e| e.to_bits()).unwrap_or(0)
 }
 
-/// Built-in attr_linear kernel. Returns a compute entity (0 on error).
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_particles_kernel_attr_linear() -> u64 {
     error::clear_error();
-    error::check(particles_kernel_attr_linear)
-        .map(|e| e.to_bits())
-        .unwrap_or(0)
+    error::check(particles_kernel_attr_linear).map(|e| e.to_bits()).unwrap_or(0)
 }
 
-/// Built-in attr_combine kernel. Returns a compute entity (0 on error).
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_particles_kernel_attr_combine() -> u64 {
     error::clear_error();
-    error::check(particles_kernel_attr_combine)
-        .map(|e| e.to_bits())
-        .unwrap_or(0)
+    error::check(particles_kernel_attr_combine).map(|e| e.to_bits()).unwrap_or(0)
 }
 
-/// Built-in attr_mix kernel. Returns a compute entity (0 on error).
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_particles_kernel_attr_mix() -> u64 {
     error::clear_error();
-    error::check(particles_kernel_attr_mix)
-        .map(|e| e.to_bits())
-        .unwrap_or(0)
+    error::check(particles_kernel_attr_mix).map(|e| e.to_bits()).unwrap_or(0)
 }
 
-/// Built-in attr_lookup1d kernel. Returns a compute entity (0 on error).
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_particles_kernel_attr_lookup1d() -> u64 {
     error::clear_error();
-    error::check(particles_kernel_attr_lookup1d)
-        .map(|e| e.to_bits())
-        .unwrap_or(0)
+    error::check(particles_kernel_attr_lookup1d).map(|e| e.to_bits()).unwrap_or(0)
 }
 
-/// Built-in attr_lookup2d kernel. Returns a compute entity (0 on error).
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_particles_kernel_attr_lookup2d() -> u64 {
     error::clear_error();
-    error::check(particles_kernel_attr_lookup2d)
-        .map(|e| e.to_bits())
-        .unwrap_or(0)
+    error::check(particles_kernel_attr_lookup2d).map(|e| e.to_bits()).unwrap_or(0)
 }
 
-/// Sprinkle "Per Primitive" mode: surface scatter kernel from a source mesh.
-/// Mutates the source mesh asset to use deinterleaved vertex bindings.
-/// Returns a compute entity (0 on error).
+/// Surface scatter kernel sourced from a mesh's triangles. Mutates the source
+/// mesh asset to use deinterleaved vertex bindings.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_particles_scatter_create(geometry_id: u64) -> u64 {
     error::clear_error();
@@ -2895,9 +2811,8 @@ pub extern "C" fn processing_particles_scatter_create(geometry_id: u64) -> u64 {
         .unwrap_or(0)
 }
 
-/// Sprinkle "Volume" mode: AABB rejection-sampling scatter kernel from a
-/// source mesh. Mutates the source mesh asset to use deinterleaved vertex
-/// bindings. Returns a compute entity (0 on error).
+/// Volume scatter kernel (AABB rejection sampling) sourced from a mesh.
+/// Mutates the source mesh asset to use deinterleaved vertex bindings.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_particles_scatter_volume_create(geometry_id: u64) -> u64 {
     error::clear_error();
@@ -2906,8 +2821,11 @@ pub extern "C" fn processing_particles_scatter_volume_create(geometry_id: u64) -
         .unwrap_or(0)
 }
 
-/// Load a glTF / GLB file. `path` is resolved against the bevy asset server
-/// root (typically `<cwd>/assets/`). Returns a gltf entity (0 on error).
+/// Load a glTF / GLB file. `path` is resolved against the asset server root
+/// (typically `<cwd>/assets/`).
+///
+/// # Safety
+/// - `path` is a valid null-terminated C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_gltf_load(
     graphics_id: u64,
@@ -2922,8 +2840,10 @@ pub unsafe extern "C" fn processing_gltf_load(
     .unwrap_or(0)
 }
 
-/// Look up a named mesh in a loaded glTF. Returns a geometry entity (0 on
-/// error).
+/// Look up a named mesh in a loaded glTF.
+///
+/// # Safety
+/// - `name` is a valid null-terminated C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_gltf_geometry(
     gltf_id: u64,
@@ -2938,8 +2858,10 @@ pub unsafe extern "C" fn processing_gltf_geometry(
     .unwrap_or(0)
 }
 
-/// Look up a named material in a loaded glTF. Returns a material entity (0
-/// on error).
+/// Look up a named material in a loaded glTF.
+///
+/// # Safety
+/// - `name` is a valid null-terminated C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_gltf_material(
     gltf_id: u64,
@@ -2954,15 +2876,14 @@ pub unsafe extern "C" fn processing_gltf_material(
     .unwrap_or(0)
 }
 
-/// Adopt the glTF's bundled camera at `index` as the active scene camera.
+/// Adopt the glTF's `index`-th camera as the active scene camera.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_gltf_camera(gltf_id: u64, index: u32) {
     error::clear_error();
     error::check(|| gltf_camera(Entity::from_bits(gltf_id), index as usize));
 }
 
-/// Spawn the glTF's bundled light at `index`. Returns a light entity (0 on
-/// error).
+/// Spawn the glTF's `index`-th light.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_gltf_light(gltf_id: u64, index: u32) -> u64 {
     error::clear_error();
@@ -2971,7 +2892,7 @@ pub extern "C" fn processing_gltf_light(gltf_id: u64, index: u32) -> u64 {
         .unwrap_or(0)
 }
 
-/// Dispatch a compute kernel against the particles' attribute buffers.
+/// Dispatch a compute kernel against a particle system's attribute buffers.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_particles_apply(particles_id: u64, compute_id: u64) {
     error::clear_error();
@@ -2983,7 +2904,7 @@ pub extern "C" fn processing_particles_apply(particles_id: u64, compute_id: u64)
     });
 }
 
-/// Record a Particles draw command.
+/// Draw a particle system instanced as `geometry`.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_particles_draw(
     graphics_id: u64,
@@ -3003,7 +2924,7 @@ pub extern "C" fn processing_particles_draw(
     });
 }
 
-/// Record a FillBuffer draw command (per-instance albedo from a buffer).
+/// Set per-instance albedo for subsequent draws to a buffer of colors.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_fill_buffer(graphics_id: u64, buffer_id: u64) {
     error::clear_error();
@@ -3016,7 +2937,7 @@ pub extern "C" fn processing_fill_buffer(graphics_id: u64, buffer_id: u64) {
     });
 }
 
-/// Set the albedo source to a solid color for a PBR material.
+/// Set a PBR material's albedo to a solid color.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_material_set_albedo_color(
     mat_id: u64,
@@ -3029,7 +2950,7 @@ pub extern "C" fn processing_material_set_albedo_color(
     error::check(|| material_set_albedo_color(Entity::from_bits(mat_id), [r, g, b, a]));
 }
 
-/// Set the albedo source to a per-instance color buffer for a PBR material.
+/// Set a PBR material's albedo to a per-instance color buffer.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_material_set_albedo_buffer(mat_id: u64, buffer_id: u64) {
     error::clear_error();
@@ -3038,7 +2959,7 @@ pub extern "C" fn processing_material_set_albedo_buffer(mat_id: u64, buffer_id: 
     });
 }
 
-/// Set the emissive source to a per-instance color buffer for a PBR material.
+/// Set a PBR material's emissive to a per-instance color buffer.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_material_set_emissive_buffer(mat_id: u64, buffer_id: u64) {
     error::clear_error();
@@ -3047,12 +2968,11 @@ pub extern "C" fn processing_material_set_emissive_buffer(mat_id: u64, buffer_id
     });
 }
 
-/// Unproject a screen coordinate to world space. `depth` is `[0, 1]` where
-/// 0 = near plane, 1 = far plane. Writes the world point through `out_x`,
-/// `out_y`, `out_z`.
+/// Unproject a screen coordinate to world space. `depth` is `[0, 1]` where 0
+/// is the near plane and 1 is the far plane.
 ///
 /// # Safety
-/// `out_x`, `out_y`, `out_z` must each be valid for a single `f32` write.
+/// - `out_x`, `out_y`, `out_z` are each valid for one f32 write.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_graphics_world_from_screen(
     graphics_id: u64,
@@ -3075,10 +2995,9 @@ pub unsafe extern "C" fn processing_graphics_world_from_screen(
     }
 }
 
-/// Enable bloom post-processing on the graphics entity. `intensity` controls
-/// the bloom contribution (additive). `threshold` is the HDR brightness
-/// floor: pixels below this value contribute little to bloom, so set it to
-/// e.g. 1.0 to make only HDR-bright pixels bloom strongly.
+/// Enable bloom post-processing. `intensity` is the additive bloom
+/// contribution. `threshold` is the HDR brightness floor; pixels below it
+/// contribute little to bloom (set ~1.0 to bloom only HDR-bright pixels).
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_graphics_set_bloom(
     graphics_id: u64,
@@ -3086,12 +3005,10 @@ pub extern "C" fn processing_graphics_set_bloom(
     threshold: f32,
 ) {
     error::clear_error();
-    error::check(|| {
-        graphics_set_bloom(Entity::from_bits(graphics_id), intensity, threshold)
-    });
+    error::check(|| graphics_set_bloom(Entity::from_bits(graphics_id), intensity, threshold));
 }
 
-/// Disable bloom post-processing on the graphics entity.
+/// Disable bloom post-processing.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_graphics_remove_bloom(graphics_id: u64) {
     error::clear_error();

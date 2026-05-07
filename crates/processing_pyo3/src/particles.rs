@@ -97,8 +97,7 @@ impl Attribute {
 #[pyclass(unsendable)]
 pub struct Particles {
     pub(crate) entity: Entity,
-    /// Name → (entity, format) so `emit(**kwargs)` can route kwargs to the
-    /// right attribute and pack them into bytes.
+    // routes emit(**kwargs) by attribute name
     name_to_attr: HashMap<String, (Entity, AttributeFormat)>,
 }
 
@@ -242,12 +241,6 @@ impl Particles {
         particles_emit_gpu(self.entity, n, compute.entity)
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
-
-    // ── Built-in kernel factories ───────────────────────────────────────
-    //
-    // Mirrors the Java `Particles.noise()` / `.scatterVolume(geo)` pattern.
-    // Each returns a configured `Compute` ready to pass to `apply` /
-    // `emit_gpu`. Uniforms can be tweaked via `compute.set(name=value, ...)`.
 
     /// Procedural value noise displacement. Uniforms: `scale`, `strength`,
     /// `time`, `curl`.

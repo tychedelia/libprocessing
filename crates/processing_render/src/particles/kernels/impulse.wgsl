@@ -1,10 +1,9 @@
-// One-shot impulse: instantly displaces `position` outward and adds an
-// outward velocity bump for particles within `radius` of `center`. Use
-// host-side dispatch (call once per click event), not as a per-frame
-// force kernel — its effect persists in the buffer state, no envelope.
+// one-shot impulse: instantly displaces position outward and adds an
+// outward velocity bump for particles within radius of center. dispatch
+// host-side per event, not per frame.
 //
-// `falloff_mode`: 0 = constant, 1 = linear, 2 = quadratic (n^2),
-// 3 = cubic (n^3). Higher exponents concentrate the blast at the center.
+// falloff_mode: 0 = constant, 1 = linear, 2 = quadratic (n^2),
+// 3 = cubic (n^3). higher exponents concentrate at the center.
 
 struct Params {
     center: vec3<f32>,

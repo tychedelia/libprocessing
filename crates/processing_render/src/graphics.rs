@@ -10,7 +10,7 @@ use bevy::{
     },
     core_pipeline::tonemapping::Tonemapping,
     post_process::bloom::Bloom,
-    ecs::{entity::EntityHashMap, query::QueryEntityError},
+    ecs::query::QueryEntityError,
     math::{Mat4, Vec3A},
     prelude::*,
     render::{
@@ -208,7 +208,7 @@ pub fn create(
             ..default()
         },
         target,
-        // tonemapping is conditionally set below based on HDR mode
+        // overridden below for hdr targets
         Tonemapping::None,
         // we need to be able to write to the texture
         CameraMainTextureUsages::default().with(TextureUsages::COPY_DST),
@@ -226,7 +226,6 @@ pub fn create(
         },
     ));
 
-    // enable Hdr, Bloom, and tonemapping for floating-point texture formats
     if is_hdr {
         entity_commands.insert((Hdr, Bloom::NATURAL, Tonemapping::TonyMcMapface));
     }
@@ -428,8 +427,6 @@ pub fn ortho(
 /// Unproject a screen coordinate to world space. `sx`, `sy` are in logical
 /// pixels with Processing's top-left origin convention. `depth` is in
 /// `[0.0, 1.0]` where 0 = near plane, 1 = far plane, matching gluUnProject.
-/// Returns `None` if the camera has no usable projection or the point maps
-/// outside the viewport.
 pub fn world_from_screen(
     In((entity, sx, sy, depth)): In<(Entity, f32, f32, f32)>,
     cameras: Query<(&bevy::camera::Camera, &GlobalTransform)>,
@@ -441,9 +438,7 @@ pub fn world_from_screen(
     let ndc_xy = camera
         .viewport_to_ndc(Vec2::new(sx, sy))
         .map_err(|_| ProcessingError::GraphicsNotFound)?;
-    // Bevy uses reverse-z: NDC z = 1.0 is near, 0.0 is far. Flip so that the
-    // caller's `depth = 0` is near and `depth = 1` is far. Use EPSILON instead
-    // of exactly 0 to avoid NaN at the far plane.
+    // bevy uses reverse-z; epsilon avoids NaN at far plane
     let ndc_z = (1.0 - depth).max(f32::EPSILON);
     let world: Vec3 = camera
         .ndc_to_world(transform, ndc_xy.extend(ndc_z))
@@ -458,10 +453,7 @@ pub fn set_bloom(
 ) -> Result<()> {
     use bevy::post_process::bloom::{Bloom, BloomCompositeMode, BloomPrefilter};
 
-    // Default to energy-conserving (NATURAL preset) which gives smooth,
-    // physically-plausible bloom around bright pixels. Switch to additive
-    // mode only when a threshold is set, since additive + threshold is the
-    // standard way to isolate bloom to specific HDR-bright pixels.
+    // additive + threshold isolates bloom to bright pixels; otherwise NATURAL
     let mut bloom = Bloom::NATURAL;
     bloom.intensity = intensity;
     if threshold > 0.0 {

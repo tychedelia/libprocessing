@@ -62,16 +62,13 @@ impl From<u8> for TextWrapMode {
     }
 }
 
-/// Text direction for BiDi layout.
+/// Text direction for BiDi layout. `Auto` derives from Unicode properties.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[repr(u8)]
 pub enum TextDirection {
-    /// Auto-detect from Unicode character properties.
     #[default]
     Auto = 0,
-    /// Left-to-right.
     Ltr = 1,
-    /// Right-to-left.
     Rtl = 2,
 }
 

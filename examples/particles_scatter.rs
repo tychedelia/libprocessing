@@ -1,7 +1,3 @@
-// Sprinkle POP analogue: scatter dense bright points across a source mesh's
-// surface each frame, area-weighted. Particles age out and the ring buffer
-// wraps.
-
 use processing_glfw::GlfwContext;
 use std::time::Instant;
 
@@ -18,8 +14,7 @@ struct Params { dt: f32, ttl: f32, _pad0: f32, _pad1: f32 }
 @group(0) @binding(2) var<storage, read_write> life:  array<f32>;
 @group(0) @binding(3) var<uniform>             params: Params;
 
-// Quick rise to full scale, then linear fade-out. Gives a sparkle-like life
-// curve rather than a slow shrink.
+// rise then fade
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let i = gid.x;
@@ -56,22 +51,15 @@ fn sketch() -> error::Result<()> {
     transform_set_position(graphics, Vec3::new(0.0, 0.4, 4.5))?;
     transform_look_at(graphics, Vec3::ZERO)?;
 
-    // Two directional lights so both faces of the orbiting sphere read.
     let _key = light_create_directional(
         graphics,
         bevy::color::Color::srgb(1.0, 0.95, 0.85),
         4500.0,
     )?;
 
-    // Source mesh — particles scatter across this implicit surface (the source
-    // itself is not drawn). High subdivision gives the area-weighted CDF a
-    // smooth distribution.
     let source = geometry_sphere(1.2, 96, 48)?;
     let scatter = particles_scatter_create(source)?;
 
-    // Particle visualization: minimal low-poly sphere — tiny enough to read as
-    // a point at the camera distance, just enough subdivision to avoid hard
-    // facets near the silhouette.
     let particle = geometry_sphere(0.005, 6, 4)?;
 
     let capacity: u32 = 40_000;
@@ -84,15 +72,10 @@ fn sketch() -> error::Result<()> {
         capacity,
         vec![position_attr, scale_attr, life_attr, age_attr],
     )?;
-    // Zero-fill of `life` is "culled" — slots stay hidden until the scatter
-    // kernel emits into them and writes life=1.
 
     let age_shader = shader_create(AGE_SHADER)?;
     let aging = compute_create(age_shader)?;
 
-    // Lit PBR so the directional light picks out the implicit sphere's
-    // curvature — particles facing the key light read brighter than those on
-    // the far side, and the shape emerges from the point cloud.
     let mat = material_create_pbr()?;
     material_set_albedo_color(mat, [0.9, 0.85, 1.0, 1.0])?;
 
@@ -117,8 +100,6 @@ fn sketch() -> error::Result<()> {
         )?;
         graphics_end_draw(graphics)?;
 
-        // Slow orbit around the implicit source so the surface reads as a
-        // shape rather than a flat field of points.
         let t = start.elapsed().as_secs_f32();
         let cam_x = (t * 0.25).cos() * 4.5;
         let cam_z = (t * 0.25).sin() * 4.5;

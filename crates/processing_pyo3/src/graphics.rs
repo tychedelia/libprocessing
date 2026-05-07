@@ -230,7 +230,7 @@ pub struct Font {
 
 #[pymethods]
 impl Font {
-    /// Query variable font axes. Returns list of dicts: {tag, min, max, default}.
+    /// Variable font axes as `(tag, min, max, default)`.
     pub fn variations(&self) -> PyResult<Vec<(String, f32, f32, f32)>> {
         font_variations(self.entity)
             .map(|axes| {
@@ -241,7 +241,7 @@ impl Font {
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    /// Query font metadata. Returns dict with family, style, weight, width, is_variable.
+    /// `(family, style, weight, width, is_variable)`.
     pub fn metadata(&self) -> PyResult<(String, String, f32, f32, bool)> {
         font_metadata(self.entity)
             .map(|m| (m.family, m.style, m.weight, m.width, m.is_variable))
@@ -397,7 +397,6 @@ impl Geometry {
         geometry_vertex_count(self.entity).map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    /// Retained sphere mesh.
     #[staticmethod]
     #[pyo3(signature = (radius, sectors=32, stacks=18))]
     pub fn sphere(radius: f32, sectors: u32, stacks: u32) -> PyResult<Self> {
@@ -406,7 +405,6 @@ impl Geometry {
         Ok(Self { entity })
     }
 
-    /// Retained box mesh.
     #[staticmethod]
     pub fn r#box(width: f32, height: f32, depth: f32) -> PyResult<Self> {
         let entity = geometry_box(width, height, depth)
@@ -414,10 +412,9 @@ impl Geometry {
         Ok(Self { entity })
     }
 
-    /// 3D lattice of `nx * ny * nz` points centered at the origin, with
-    /// `spacing` units between adjacent points. Topology is `PointList` —
-    /// typically used as a position source for `Particles(geometry=...)` rather
-    /// than rasterized directly.
+    /// `nx * ny * nz` point lattice centered at the origin with `spacing`
+    /// units between adjacent points. `PointList` topology — intended as a
+    /// position source for `Particles(geometry=...)`.
     #[staticmethod]
     #[pyo3(signature = (nx, ny, nz, spacing=1.0))]
     pub fn grid(nx: u32, ny: u32, nz: u32, spacing: f32) -> PyResult<Self> {
@@ -937,8 +934,6 @@ impl Graphics {
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    // --- Font ---
-
     pub fn load_font(&self, path: &str) -> PyResult<Font> {
         font_load(path)
             .map(|entity| Font { entity })
@@ -961,8 +956,6 @@ impl Graphics {
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    // --- Text ---
-
     #[pyo3(signature = (content, x, y, *args, max_w=None, max_h=None))]
     pub fn text(
         &self,
@@ -973,7 +966,7 @@ impl Graphics {
         max_w: Option<f32>,
         max_h: Option<f32>,
     ) -> PyResult<()> {
-        // text(content, x, y) or text(content, x, y, z) or text(content, x, y, max_w, max_h)
+        // (x, y), (x, y, z), (x, y, max_w, max_h), or (x, y, z, max_w, max_h)
         let (z, mw, mh) = match args.len() {
             0 => (0.0, max_w, max_h),
             1 => {
@@ -1041,11 +1034,8 @@ impl Graphics {
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    /// Enable/configure an OpenType font feature.
-    /// text_feature("smcp")          -> enable (value=1)
-    /// text_feature("smcp", True)    -> enable (value=1)
-    /// text_feature("smcp", False)   -> disable (value=0)
-    /// text_feature("salt", 3)       -> select alternate 3
+    /// Enable/configure an OpenType font feature. `value` may be a bool
+    /// (on/off) or an int (alternate index); defaults to 1.
     #[pyo3(signature = (tag, value=None))]
     pub fn text_feature(&self, tag: &str, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
         let v: u16 = match value {
@@ -1076,9 +1066,9 @@ impl Graphics {
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    /// Extract glyph outlines as path commands (one list per glyph).
-    /// Each command is a tuple: ("M", x, y), ("L", x, y), ("Q", cx, cy, x, y),
-    /// ("C", cx1, cy1, cx2, cy2, x, y), or ("Z",).
+    /// Glyph outlines as path commands, one list per glyph. Commands are
+    /// tuples: `("M", x, y, ...)`, `("L", x, y, ...)`, `("Q", cx, cy, x, y, ...)`,
+    /// `("C", cx1, cy1, cx2, cy2, x, y)`, or `("Z", ...)`.
     pub fn text_to_paths(
         &self,
         content: &str,
@@ -1109,8 +1099,8 @@ impl Graphics {
         })
     }
 
-    /// Extract glyph outlines as per-contour path commands.
-    /// Each contour (MoveTo...Close sequence) is a separate list.
+    /// Like `text_to_paths`, but split into one list per contour
+    /// (MoveTo..Close sequence) rather than per glyph.
     pub fn text_to_contours(
         &self,
         content: &str,
@@ -1141,8 +1131,7 @@ impl Graphics {
         })
     }
 
-    /// Sample points along text outlines.
-    /// Returns list of [x, y] points.
+    /// Sample `(x, y)` points along text outlines.
     #[pyo3(signature = (content, x, y, sample_factor=None))]
     pub fn text_to_points(
         &self,
@@ -1155,7 +1144,7 @@ impl Graphics {
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    /// Generate a 3D extruded mesh from text outlines.
+    /// 3D extruded mesh from text outlines.
     pub fn text_to_model(
         &self,
         content: &str,
@@ -1170,8 +1159,7 @@ impl Graphics {
         Ok(Geometry { entity })
     }
 
-    /// Set per-glyph colors for the next text() call.
-    /// colors: list of (r, g, b) or (r, g, b, a) tuples with values 0-255.
+    /// Per-glyph colors for the next `text()` call as `(r, g, b, a)` tuples.
     pub fn text_glyph_colors(&self, colors: Vec<(f32, f32, f32, f32)>) -> PyResult<()> {
         let colors: Vec<bevy::color::Color> = colors
             .into_iter()
@@ -1204,7 +1192,7 @@ impl Graphics {
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    /// Set text direction. 0=AUTO, 1=LTR, 2=RTL
+    /// Text direction: 0=AUTO, 1=LTR, 2=RTL.
     pub fn text_direction(&self, dir: u8) -> PyResult<()> {
         graphics_text_direction(self.entity, dir)
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
@@ -1216,13 +1204,12 @@ impl Graphics {
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    /// Get the number of lines after text layout.
     pub fn text_line_count(&self, content: &str) -> PyResult<usize> {
         graphics_text_line_count(self.entity, content)
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    /// Get per-line info: list of dicts with "text" and "rect" (x, y, w, h).
+    /// Per-line `(text, (x, y, w, h))` after layout.
     #[pyo3(signature = (content, x, y, max_w=None, max_h=None))]
     pub fn text_lines(
         &self,
@@ -1242,7 +1229,7 @@ impl Graphics {
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    /// Get per-glyph bounding rects: list of (x, y, w, h).
+    /// Per-glyph bounding rects as `(x, y, w, h)`.
     #[pyo3(signature = (content, x, y, max_w=None, max_h=None))]
     pub fn text_glyph_rects(
         &self,

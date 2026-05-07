@@ -1,10 +1,9 @@
-// Vortex / swirl around an axis through a center point. For each particle
-// within `radius` (measured perpendicular to the axis), adds a tangential
-// impulse to `velocity` whose direction is `cross(axis, radial)`. Right-
-// hand rule: positive `strength` rotates counter-clockwise looking along
-// the negative axis direction.
+// vortex around an axis through center. for each particle within radius
+// (perpendicular to the axis), adds a tangential impulse in direction
+// cross(axis, radial). right-hand rule: positive strength rotates
+// counter-clockwise looking along the negative axis direction.
 //
-// `falloff_mode` matches Attract: 0 = constant, 1 = linear, 2 = smoothstep,
+// falloff_mode matches Attract: 0 = constant, 1 = linear, 2 = smoothstep,
 // 3 = inverse-distance.
 
 struct Params {
@@ -36,8 +35,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let pos = vec3<f32>(position[pi], position[pi + 1u], position[pi + 2u]);
     let offset = pos - params.center;
 
-    // Component of offset perpendicular to the axis is what determines
-    // the radius from the axis line.
+    // perpendicular component determines the radius from the axis line.
     let parallel = dot(offset, axis) * axis;
     let radial = offset - parallel;
     let r2 = dot(radial, radial);

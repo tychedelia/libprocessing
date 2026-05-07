@@ -73,8 +73,7 @@ def setup():
         capacity=capacity,
         attributes=[position_attr, color_attr, scale_attr, life_attr, age_attr],
     )
-    # Zero-fill of `life` parks unemitted slots automatically (life=0 = culled).
-
+    # zero-init of `life` culls unemitted slots
     color_buf = p.buffer(color_attr)
     mat = Material.unlit(albedo=color_buf)
     aging = Compute(Shader(AGING_SHADER))

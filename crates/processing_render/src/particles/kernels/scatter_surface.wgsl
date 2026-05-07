@@ -1,22 +1,18 @@
-// Initializes particle positions by area-weighted random scatter on a source
-// mesh's surface. Sprinkle POP analogue. Dispatched via `particles_emit_gpu`.
-//
-// Particle attributes required: `position`, `scale`, `age`, `life`. The
-// kernel resets `age = 0`, seeds `scale = 1` (so a follow-up `attr_linear`
-// decay produces the expected fade), and sets `life = 1` so the GPU
+// area-weighted random scatter on a source mesh's surface. dispatched via
+// particles_emit_gpu. resets age = 0, seeds scale = 1 (so a follow-up
+// attr_linear decay produces the expected fade), sets life = 1 so the GPU
 // preprocess passes the slot through to the renderer.
 //
-// Bindings:
-//   source_position: deinterleaved mesh position attribute (3 f32s / vertex).
-//     Bound via ShaderValue::MeshAttribute against a deinterleaved Mesh.
-//   source_indices: dense u32 index buffer (3 u32s / face). Uploaded by
-//     `particles_scatter_create` as a regular storage buffer (mesh slab
+// bindings:
+//   source_position: deinterleaved mesh position attribute (3 f32s/vertex),
+//     bound via ShaderValue::MeshAttribute against a deinterleaved Mesh.
+//   source_indices: dense u32 index buffer (3 u32s/face). uploaded by
+//     particles_scatter_create as a regular storage buffer (mesh slab
 //     offsets and u16 indices are flattened CPU-side at setup).
 //   cdf: prefix-summed face area, normalized so cdf[face_count-1] == 1.0.
 //   position / age / life: ring-buffer particle attributes.
 //   params.face_count: triangle count.
-//   emit_range: (base_slot, count, capacity, 0). Matches the other GPU emit
-//     kernels' convention; consumed by `particles_emit_gpu`.
+//   emit_range: (base_slot, count, capacity, 0); consumed by particles_emit_gpu.
 
 struct Params {
     face_count: u32,
@@ -49,7 +45,7 @@ fn hash_unit(n: u32) -> f32 {
     return f32(hash(n)) / f32(0xffffffffu);
 }
 
-// Branchless-ish binary search for the first index `i` with cdf[i] >= u.
+// first index i with cdf[i] >= u.
 fn cdf_search(u: f32) -> u32 {
     var lo: u32 = 0u;
     var hi: u32 = params.face_count;
@@ -97,7 +93,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         source_position[i2 * 3u + 2u],
     );
 
-    // Uniform barycentric on triangle: reflect (u,v) into the lower-left
+    // uniform barycentric on triangle: reflect (u, v) into the lower-left
     // half so the area distribution is uniform.
     var u = hash_unit(seed * 31u + 23u);
     var v = hash_unit(seed * 47u + 29u);

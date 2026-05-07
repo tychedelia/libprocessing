@@ -1,11 +1,8 @@
-// Per-particle rotation: writes a `rotation` quaternion that rotates the
-// configurable `forward` axis to align with the particle's velocity
-// direction. Use for boid-like meshes that should "face" their travel
-// direction. Default `forward` is +Z, matching `Geometry.box(w, h, d)`'s
-// long axis.
+// per-particle rotation quaternion that aligns the configurable `forward`
+// axis with the particle's velocity direction. default forward is +Z,
+// matching Geometry.box(w, h, d)'s long axis.
 //
-// Particles with near-zero velocity are skipped (their previous rotation
-// is left intact).
+// near-zero velocity slots are skipped (previous rotation is preserved).
 
 struct Params {
     forward: vec3<f32>,
@@ -16,9 +13,8 @@ struct Params {
 @group(0) @binding(1) var<storage, read_write> rotation: array<f32>;
 @group(0) @binding(2) var<uniform> params: Params;
 
-// Shortest-arc quaternion from one unit vector to another. Handles the
-// antipodal case (180° rotation) by picking an arbitrary perpendicular
-// axis to rotate around.
+// shortest-arc quaternion from one unit vector to another. antipodal case
+// (180°) picks an arbitrary perpendicular axis to rotate around.
 fn quat_from_to(src: vec3<f32>, dst: vec3<f32>) -> vec4<f32> {
     let d = dot(src, dst);
     if d > 0.999999 {

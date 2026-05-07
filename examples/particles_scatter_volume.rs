@@ -1,7 +1,3 @@
-// Sprinkle "Volume" mode analogue: rejection-sampled particles filling the
-// interior of a closed mesh. Uses the Duck.glb so the volume reads as a
-// recognizable shape rather than an abstract blob.
-
 use processing_glfw::GlfwContext;
 use std::time::Instant;
 
@@ -51,15 +47,11 @@ fn sketch() -> error::Result<()> {
     let graphics = graphics_create(surface, 900, 700, TextureFormat::Rgba16Float)?;
 
     graphics_mode_3d(graphics)?;
-    // Duck.glb is authored in cm — bbox is roughly 150 wide × 200 tall. Frame
-    // it from a distance that fits, then enable the interactive orbit camera
-    // so you can drag-rotate around the volume.
+    // duck is in cm
     transform_set_position(graphics, Vec3::new(0.0, 100.0, 400.0))?;
     transform_look_at(graphics, Vec3::new(0.0, 80.0, 0.0))?;
     graphics_orbit_camera(graphics)?;
 
-    // Source mesh: the Duck. Its volume — body, head, beak — is what particles
-    // fill via AABB rejection sampling.
     let gltf = gltf_load(graphics, "gltf/Duck.glb")?;
     let duck = gltf_geometry(gltf, "LOD3spShape")?;
     let scatter = particles_scatter_volume_create(duck)?;
@@ -76,8 +68,6 @@ fn sketch() -> error::Result<()> {
         capacity,
         vec![position_attr, scale_attr, life_attr, age_attr],
     )?;
-    // Zero-fill of `life` is "culled" — slots stay hidden until the scatter
-    // kernel emits into them and writes life=1.
 
     let age_shader = shader_create(AGE_SHADER)?;
     let aging = compute_create(age_shader)?;
@@ -85,8 +75,6 @@ fn sketch() -> error::Result<()> {
     let mat = material_create_unlit()?;
     material_set_albedo_color(mat, [1.0, 1.0, 1.0, 1.0])?;
 
-    // Volume scatter is O(faces × attempts) per particle, so we keep the
-    // burst modest. Capacity × ttl⁻¹ should match — here ~30K alive.
     let burst: u32 = 250;
     let dt: f32 = 1.0 / 60.0;
     let ttl: f32 = 5.0;

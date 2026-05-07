@@ -1,13 +1,10 @@
-//! Stress test: a "silly" number of PBR-lit cubes slowly rotating. Mostly here
-//! to feel out the practical upper bound — change `GRID` to push it harder.
-
 use processing_glfw::GlfwContext;
 
 use bevy::math::Vec3;
 use processing::prelude::*;
 use processing_render::render::command::DrawCommand;
 
-const GRID: u32 = 100; // GRID^3 = 1,000,000 particles
+const GRID: u32 = 100; // GRID^3 particles
 const SPACING: f32 = 1.0;
 
 const SPIN_SHADER: &str = r#"
@@ -63,8 +60,6 @@ fn sketch() -> error::Result<()> {
     transform_look_at(graphics, Vec3::new(0.0, 0.0, 0.0))?;
     graphics_orbit_camera(graphics)?;
 
-    // Three directional R/G/B lights from cardinal axes — each cube face picks
-    // up the closest light's color so the lighting variation is obvious.
     let red = light_create_directional(graphics, bevy::color::Color::srgb(1.0, 0.0, 0.0), 1000.0)?;
     transform_set_position(red, Vec3::new(1.0, 0.0, 0.0))?;
     transform_look_at(red, Vec3::ZERO)?;
@@ -89,14 +84,12 @@ fn sketch() -> error::Result<()> {
     let mut colors: Vec<f32> = Vec::with_capacity(capacity as usize * 4);
     let extent_half = (GRID as f32) * SPACING * 0.5;
     for i in 0..capacity {
-        // Three independent hash streams give us pseudo-random uniform values.
         let rx = hash_unit(i.wrapping_mul(2654435761).wrapping_add(0x9E37));
         let ry = hash_unit(i.wrapping_mul(40503).wrapping_add(0x68E1));
         let rz = hash_unit(i.wrapping_mul(2246822519).wrapping_add(0xC2B2));
         positions.push((rx * 2.0 - 1.0) * extent_half);
         positions.push((ry * 2.0 - 1.0) * extent_half);
         positions.push((rz * 2.0 - 1.0) * extent_half);
-        // Color from the same random samples — stable per particle.
         colors.push(rx);
         colors.push(ry);
         colors.push(rz);
@@ -119,7 +112,7 @@ fn sketch() -> error::Result<()> {
     let spin_shader = shader_create(SPIN_SHADER)?;
     let spin = compute_create(spin_shader)?;
 
-    eprintln!("field_stress: {capacity} particles");
+    eprintln!("{capacity} particles");
 
     while glfw_ctx.poll_events() {
         graphics_begin_draw(graphics)?;

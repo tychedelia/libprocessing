@@ -1,4 +1,4 @@
-// Affine on each particle position: scale → axis-angle rotate → translate.
+// affine on each particle position: scale, then axis-angle rotate, then translate.
 
 struct Params {
     translate: vec3<f32>,

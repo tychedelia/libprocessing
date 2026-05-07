@@ -40,7 +40,7 @@ pub enum PathCommand {
     Close,
 }
 
-/// Bundled text layout parameters to avoid long parameter lists.
+/// Text layout parameters.
 pub struct TextParams<'a> {
     pub text_size: f32,
     pub align_h: TextAlignH,
@@ -141,13 +141,12 @@ pub fn text_bounds(content: &str, x: f32, y: f32, params: &TextParams, text_cx: 
             .map(|line| line.metrics().ascent)
             .unwrap_or(0.0);
 
-        // Clamp height if max_h is set
         let height = match params.max_h {
             Some(h) => total_height.min(h),
             None => total_height,
         };
 
-        // Compute vertical offset based on alignment (same logic as text())
+        // matches text()
         let by = match params.align_v {
             TextAlignV::Baseline => y - ascent,
             TextAlignV::Top => y,
@@ -392,13 +391,13 @@ pub fn text_to_model(
         let mut fill_tess = FillTessellator::new();
 
         for path in &glyph_paths {
-            // --- Front face (z = +half_depth, normal = [0,0,1]) ---
+            // front face
             {
                 let mut builder = Extrusion3DBuilder::new(&mut mesh, half_depth, [0.0, 0.0, 1.0]);
                 let _ = fill_tess.tessellate_path(path, &FillOptions::default(), &mut builder);
             }
 
-            // --- Back face (z = -half_depth, normal = [0,0,-1], reversed winding) ---
+            // back face — winding reversed below
             let back_indices_start = mesh
                 .indices()
                 .map(|i| match i {
@@ -412,7 +411,6 @@ pub fn text_to_model(
                 let _ = fill_tess.tessellate_path(path, &FillOptions::default(), &mut builder);
             }
 
-            // Reverse winding order for back face
             if let Some(Indices::U32(indices)) = mesh.indices_mut() {
                 let mut i = back_indices_start;
                 while i + 2 < indices.len() {
@@ -421,8 +419,7 @@ pub fn text_to_model(
                 }
             }
 
-            // --- Side walls ---
-            // Walk the path outline and connect front vertices to back vertices
+            // side walls connect front to back along the outline
             let mut contour_points: Vec<Point<f32>> = Vec::new();
 
             for event in path.iter() {
@@ -436,7 +433,6 @@ pub fn text_to_model(
                         contour_points.push(to);
                     }
                     Event::Quadratic { from, ctrl, to } => {
-                        // Flatten quadratic curve
                         let steps = 8;
                         for s in 1..=steps {
                             let t = s as f32 / steps as f32;
@@ -447,7 +443,6 @@ pub fn text_to_model(
                         }
                     }
                     Event::Cubic { from, ctrl1, ctrl2, to } => {
-                        // Flatten cubic curve
                         let steps = 12;
                         for s in 1..=steps {
                             let t = s as f32 / steps as f32;
@@ -465,13 +460,11 @@ pub fn text_to_model(
                     }
                     Event::End { close, .. } => {
                         if close && contour_points.len() >= 2 {
-                            // Generate side wall quads for this contour
                             for i in 0..contour_points.len() {
                                 let j = (i + 1) % contour_points.len();
                                 let p0 = contour_points[i];
                                 let p1 = contour_points[j];
 
-                                // Compute outward normal for this edge
                                 let dx = p1.x - p0.x;
                                 let dy = p1.y - p0.y;
                                 let len = (dx * dx + dy * dy).sqrt().max(1e-6);
@@ -479,14 +472,13 @@ pub fn text_to_model(
                                 let ny = dx / len;
                                 let normal = [nx, ny, 0.0];
 
-                                // Four vertices: front-p0, front-p1, back-p1, back-p0
+                                // front-p0, front-p1, back-p1, back-p0
                                 let base = vertex_count(&mesh) as u32;
                                 push_vertex_3d(&mut mesh, [p0.x, p0.y, half_depth], normal);
                                 push_vertex_3d(&mut mesh, [p1.x, p1.y, half_depth], normal);
                                 push_vertex_3d(&mut mesh, [p1.x, p1.y, -half_depth], normal);
                                 push_vertex_3d(&mut mesh, [p0.x, p0.y, -half_depth], normal);
 
-                                // Two triangles
                                 if let Some(Indices::U32(indices)) = mesh.indices_mut() {
                                     indices.extend_from_slice(&[
                                         base,
@@ -552,7 +544,7 @@ fn push_vertex_3d(mesh: &mut Mesh, position: [f32; 3], normal: [f32; 3]) {
     }
 }
 
-/// A geometry builder that places lyon tessellation output at a given Z depth with a given normal.
+/// Places lyon tessellation output at a given Z depth with a given normal.
 struct Extrusion3DBuilder<'a> {
     mesh: &'a mut Mesh,
     z: f32,
@@ -710,7 +702,6 @@ fn extract_glyph_path_commands(
         .collect()
 }
 
-/// Extract glyph outlines as lyon Path objects (internal helper).
 fn extract_glyph_lyon_paths(
     layout: &Layout<Color>,
     base_x: f32,
@@ -784,7 +775,6 @@ fn build_layout(
 ) -> Layout<Color> {
     let mut builder = layout_cx.ranged_builder(font_cx, content, 1.0, false);
 
-    // Set default styles
     let family = params.font_family.unwrap_or(DEFAULT_FONT_FAMILY);
     builder.push_default(StyleProperty::FontSize(params.text_size));
     builder.push_default(StyleProperty::FontStack(FontStack::Single(
@@ -800,7 +790,7 @@ fn build_layout(
         builder.push_default(StyleProperty::WordBreak(WordBreakStrength::BreakAll));
     }
 
-    // Apply text style (bold/italic). text_weight overrides bold from text_style.
+    // text_weight overrides bold from text_style
     if let Some(weight) = params.text_weight {
         builder.push_default(StyleProperty::FontWeight(ParleyFontWeight::new(weight)));
         if matches!(params.text_style, TextStyle::Italic | TextStyle::BoldItalic) {
@@ -852,11 +842,9 @@ fn build_layout(
 
     let mut layout = builder.build(content);
 
-    // Apply line breaking
     let max_advance = params.max_w.unwrap_or(f32::MAX);
     layout.break_all_lines(Some(max_advance));
 
-    // Apply alignment
     let alignment = match params.align_h {
         TextAlignH::Left => Alignment::Start,
         TextAlignH::Center => Alignment::Center,
@@ -883,7 +871,6 @@ fn tessellate_layout(
             continue;
         };
 
-        // Clip lines that exceed the maximum height
         if let Some(h) = max_h {
             let metrics = line.metrics();
             if metrics.baseline + metrics.descent > h {
@@ -902,7 +889,6 @@ fn tessellate_layout(
             let normalized_coords = run.normalized_coords();
             let color = glyph_run.style().brush.clone();
 
-            // Get the raw font bytes for skrifa
             let Ok(font_ref) = FontRef::from_index(font_data.data.as_ref(), font_data.index) else {
                 continue;
             };
@@ -910,14 +896,13 @@ fn tessellate_layout(
             let outlines = font_ref.outline_glyphs();
             let skrifa_size = Size::new(font_size);
 
-            // Convert normalized coordinates (i16) to skrifa NormalizedCoord (F2Dot14)
+            // i16 -> F2Dot14
             let coords: Vec<NormalizedCoord> = normalized_coords
                 .iter()
                 .map(|&c| NormalizedCoord::from_bits(c))
                 .collect();
             let location = LocationRef::new(&coords);
 
-            // Process each glyph in the run
             for glyph in glyph_run.positioned_glyphs() {
                 let glyph_color = glyph_colors
                     .filter(|colors| !colors.is_empty())
@@ -933,9 +918,7 @@ fn tessellate_layout(
                     let _ = outline_glyph.draw(settings, &mut pen);
 
                     if let Some(path) = pen.build() {
-                        // glyph.x and glyph.y are the fully positioned coordinates
-                        // Font outlines have Y-up, but our coordinate system is Y-down,
-                        // so we negate the Y from the outline pen
+                        // outline is Y-up, screen is Y-down; flip below
                         let tx = base_x + glyph.x;
                         let ty = base_y + glyph.y;
 
@@ -973,8 +956,7 @@ fn stroke_layout(
     }
 }
 
-/// Translate a lyon path keeping Y-up convention (for 3D geometry).
-/// Font outline Y is up; layout ty is Y-down, so we compute: (x + tx, y - ty).
+// outline is Y-up, layout ty is Y-down: emit (x + tx, y - ty)
 fn translate_path_yup(path: &Path, tx: f32, ty: f32) -> Path {
     let mut builder = Path::builder();
     for event in path.iter() {
@@ -1016,7 +998,7 @@ fn translate_path_yup(path: &Path, tx: f32, ty: f32) -> Path {
     builder.build()
 }
 
-/// Extract glyph outlines as lyon Path objects in Y-up convention (for 3D).
+// Y-up variant for 3D
 fn extract_glyph_lyon_paths_yup(
     layout: &Layout<Color>,
     base_x: f32,
@@ -1081,7 +1063,7 @@ fn extract_glyph_lyon_paths_yup(
     paths
 }
 
-/// Translate a lyon path by (tx, ty) and flip Y coordinates (font Y-up to screen Y-down).
+// translate by (tx, ty), flipping outline Y-up to screen Y-down
 fn translate_path_flip_y(path: &Path, tx: f32, ty: f32) -> Path {
     let mut builder = Path::builder();
     for event in path.iter() {
@@ -1123,7 +1105,7 @@ fn translate_path_flip_y(path: &Path, tx: f32, ty: f32) -> Path {
     builder.build()
 }
 
-/// OutlinePen implementation that converts skrifa glyph outlines to lyon Path.
+// skrifa OutlinePen -> lyon Path
 struct LyonOutlinePen {
     builder: lyon::path::path::Builder,
     has_content: bool,

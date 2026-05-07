@@ -1,4 +1,4 @@
-// Modulates StandardMaterial base_color by particle_colors[tag] then runs
+// modulates StandardMaterial base_color by particle_colors[tag] then runs
 // the standard PBR fragment. tag = per-instance slot index from pack.wgsl.
 
 #import bevy_pbr::{
@@ -43,13 +43,12 @@ fn fragment(
 #endif
 
 #ifdef HAS_EMISSIVE_COLORS
-    // Add only the rgb of the per-particle emissive, preserving the base
-    // material's alpha. The alpha channel of `material.emissive` is the
-    // `emissive_exposure_weight` — leaving it at the StandardMaterial
-    // default (0.0) makes the emissive purely additive (i.e., HDR bright),
-    // which is what users expect from "set emissive color". A value of 1.0
-    // would multiply the emissive by `view.exposure` (~0.001 by default)
-    // and effectively zero it out.
+    // add only the rgb of the per-particle emissive, preserving the base
+    // material's alpha. material.emissive's alpha is the
+    // emissive_exposure_weight — the StandardMaterial default (0.0) makes
+    // the emissive purely additive (HDR bright), matching expectations
+    // for "set emissive color". 1.0 would multiply by view.exposure
+    // (~0.001 default) and effectively zero it.
     pbr_input.material.emissive = vec4<f32>(
         pbr_input.material.emissive.rgb + particle_emissive_colors[tag].rgb,
         pbr_input.material.emissive.a

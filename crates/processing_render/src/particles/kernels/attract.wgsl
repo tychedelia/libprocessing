@@ -1,8 +1,7 @@
-// Point attractor / repeller. Adds a radial impulse to `velocity` for
-// particles within `radius` of `center`. Positive `strength` attracts
-// (force points toward center); negative repels. `falloff_mode` controls
-// how the impulse magnitude varies with distance:
-//   0 = constant inside radius (none / hard edge)
+// point attractor / repeller. radial impulse to velocity for particles
+// within radius of center. positive strength attracts; negative repels.
+// falloff_mode:
+//   0 = constant inside radius
 //   1 = linear (1 - d/r)
 //   2 = smoothstep ((1 - d/r)^2 * (3 - 2*(1 - d/r)))
 //   3 = inverse-distance (1 / (d + 1))

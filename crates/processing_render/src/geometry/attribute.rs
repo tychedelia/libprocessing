@@ -198,10 +198,9 @@ impl Attribute {
         }
     }
 
-    /// Like [`Self::from_builtin`] but with a friendly user-facing name.
+    /// Like [`Self::from_builtin`] but with an explicit user-visible name.
     /// `inner` is the underlying Bevy mesh attribute (used for mesh layout
-    /// matching); `name` is the identifier the user sees and that custom
-    /// shaders bind by.
+    /// matching); `name` is the identifier custom shaders bind by.
     pub fn from_builtin_with_name(
         name: &'static str,
         inner: MeshVertexAttribute,

@@ -16,14 +16,11 @@ pub struct Buffer {
     pub(crate) entity: Entity,
     element_type: Option<ShaderValue>,
     size: u64,
-    /// `true` for borrowed wrappers (e.g. `Particles.buffer()`) where the
-    /// underlying entity belongs elsewhere; `Drop` skips destroy in that case.
+    // borrowed wrappers (e.g. Particles.buffer()) skip destroy on drop
     borrowed: bool,
 }
 
 impl Buffer {
-    /// Wrap an existing buffer entity without taking ownership. `Drop` will
-    /// not destroy it.
     pub(crate) fn from_entity(entity: Entity, element_type: Option<ShaderValue>) -> Self {
         let size = buffer_size(entity).unwrap_or(0);
         Self {
@@ -140,8 +137,7 @@ impl Buffer {
     }
 
     pub fn write(&mut self, values: &Bound<'_, PyAny>) -> PyResult<()> {
-        // Bytes path skips per-element conversion — the only viable route for
-        // multi-million-element uploads.
+        // bytes path skips per-element conversion for large uploads
         if let Ok(b) = values.cast::<PyBytes>() {
             return buffer_write(self.entity, b.as_bytes().to_vec())
                 .map_err(|e| PyRuntimeError::new_err(format!("{e}")));
@@ -275,8 +271,6 @@ pub struct Compute {
 }
 
 impl Compute {
-    /// Wrap an existing compute entity (e.g., one created by a Rust-side
-    /// factory like `field_kernel_noise`). Not exposed to Python directly.
     pub(crate) fn from_entity(entity: Entity) -> Self {
         Self { entity }
     }

@@ -1,14 +1,10 @@
-// Flocking integrator: computes separation, alignment, and cohesion via
-// a tiled brute-force neighbor scan, applies the combined steering force
-// to velocity, and integrates position. Optimized with workgroup-shared
-// memory tiling — each iteration loads a tile of N=workgroup_size
-// particles into shared memory once for all threads in the workgroup to
-// reuse.
+// flocking: separation, alignment, cohesion via tiled brute-force neighbor
+// scan, applied as steering force, then position integrates. each iteration
+// loads a tile of N=workgroup_size particles into shared memory once for
+// reuse by all threads in the workgroup.
 //
-// This kernel does NOT handle bounds, drag, or external forces — chain
-// `kernelBounds`, `kernelDrag`, or `kernelAttract` after it as needed.
-//
-// Required attributes: `position` (vec3-as-array<f32>), `velocity` (same).
+// does not handle bounds, drag, or external forces — chain kernelBounds,
+// kernelDrag, or kernelAttract after this.
 
 struct Params {
     sep_distance: f32,         // separation neighborhood radius

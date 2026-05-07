@@ -24,8 +24,6 @@ fn sketch() -> error::Result<()> {
     let _light =
         light_create_directional(graphics, bevy::color::Color::srgb(0.95, 0.9, 0.85), 200.0)?;
 
-    // Seed positions from a sphere mesh; noise will jitter them around their
-    // initial sphere shape over time.
     let source = geometry_sphere(5.0, 32, 24)?;
     let position_attr = geometry_attribute_position();
     let uv_attr = geometry_attribute_uv();
@@ -37,7 +35,7 @@ fn sketch() -> error::Result<()> {
     let color_buf =
         particles_buffer(p, color_attr)?.ok_or(error::ProcessingError::ParticlesNotFound)?;
 
-    // Color each particle by hue from its U coord.
+    // hue from u
     let uv_bytes = buffer_read(uv_buf)?;
     let mut colors: Vec<u8> = Vec::with_capacity(uv_bytes.len() * 2);
     for chunk in uv_bytes.chunks_exact(8) {

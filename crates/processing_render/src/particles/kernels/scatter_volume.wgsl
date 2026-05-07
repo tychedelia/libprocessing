@@ -1,26 +1,22 @@
-// Initializes particle positions by rejection-sampled volume scatter inside a
-// closed source mesh. Sprinkle POP "Volume" mode analogue. Dispatched via
-// `particles_emit_gpu`.
+// rejection-sampled volume scatter inside a closed source mesh. dispatched
+// via particles_emit_gpu.
 //
-// Algorithm: pick a random point inside the mesh's AABB; cast a ray in a
-// fixed direction and count triangle hits via Möller-Trumbore. Odd hits =
-// inside the mesh (parity test). Retry up to `params.max_attempts`. Slots
-// that don't find a point inside are left culled — emit_head still advances,
-// so they're skipped this frame and reused on the next ring-buffer cycle.
+// algorithm: pick a random point in the mesh's AABB; cast a ray in a fixed
+// direction and count triangle hits via Möller-Trumbore. odd hits = inside
+// (parity test). retry up to params.max_attempts. slots that fail are
+// left culled — emit_head still advances, so they're skipped this frame
+// and reused on the next ring-buffer cycle.
 //
-// Particle attributes required: `position`, `scale`, `age`, `life`. `scale`
-// is initialized to 1 on emit so a follow-up `attr_linear` decay produces the
-// expected fade without the user having to also seed the scale buffer.
-// `life` is initialized to 1 on emit so the GPU preprocess passes fresh
-// slots through to the renderer (life <= 0 = culled).
+// scale is initialized to 1 so a follow-up attr_linear decay fades without
+// requiring the user to also seed the scale buffer. life is initialized
+// to 1 so fresh slots pass GPU preprocess (life <= 0 = culled).
 //
-// Cost: O(face_count × attempts) per emitted particle. For meshes up to a
-// few thousand faces this is fine. Above that, consider preprocessing the
-// mesh into a BVH or signed distance field.
+// cost: O(face_count × attempts) per emitted particle. above a few thousand
+// faces, consider preprocessing into a BVH or signed distance field.
 //
-// Bindings:
-//   source_position: deinterleaved mesh position attribute (3 f32s / vertex).
-//   source_indices: dense u32 index buffer (3 u32s / face).
+// bindings:
+//   source_position: deinterleaved mesh position attribute (3 f32s/vertex).
+//   source_indices: dense u32 index buffer (3 u32s/face).
 //   position / age / life: particle attributes.
 //   params: AABB, face_count, max_attempts, seed.
 //   emit_range: (base_slot, count, capacity, 0).
@@ -65,8 +61,8 @@ fn fetch_vertex(i: u32) -> vec3<f32> {
     );
 }
 
-// Möller-Trumbore. Returns t >= 0 if `ro + t*rd` hits the triangle in front
-// of the ray origin, or a negative sentinel otherwise.
+// Möller-Trumbore. returns t >= 0 if `ro + t*rd` hits the triangle in
+// front of the ray origin, or a negative sentinel otherwise.
 fn ray_triangle(
     ro: vec3<f32>, rd: vec3<f32>,
     p0: vec3<f32>, p1: vec3<f32>, p2: vec3<f32>,
@@ -86,11 +82,10 @@ fn ray_triangle(
     return f * dot(e2, q);
 }
 
-// Parity test: arbitrary unit ray, count how many triangles it crosses.
-// Inside iff hit count is odd.
+// parity test: arbitrary unit ray, count crossings; inside iff odd.
 fn point_inside(p: vec3<f32>) -> bool {
-    // Slightly skew direction off the principal axes to avoid degenerate
-    // hits on axis-aligned triangle edges.
+    // skew direction off the principal axes to avoid degenerate hits on
+    // axis-aligned triangle edges.
     let rd = normalize(vec3<f32>(0.5773, 0.5774, 0.5775));
     var hits = 0u;
     for (var f = 0u; f < params.face_count; f = f + 1u) {
