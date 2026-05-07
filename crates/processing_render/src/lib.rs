@@ -2254,6 +2254,96 @@ pub fn particles_kernel_transform() -> error::Result<Entity> {
     Ok(entity)
 }
 
+/// Linear transform kernel: `out = in * scale + offset` over a scalar (f32)
+/// attribute. Generic-slot kernel — bind input/output buffers to the
+/// namespaced slots `op_in` and `op_out` (the same buffer is allowed for
+/// in-place ops). The slot names are not auto-bound by `particles_apply`,
+/// which matches by attribute name.
+///
+/// Uniforms: `scale: f32` (default 1.0), `offset: f32` (default 0.0).
+pub fn particles_kernel_attr_linear() -> error::Result<Entity> {
+    let shader = shader_load(particles::kernels::ATTR_LINEAR_PATH)?;
+    let entity = compute_create(shader)?;
+    compute_set(entity, "scale", shader_value::ShaderValue::Float(1.0))?;
+    compute_set(entity, "offset", shader_value::ShaderValue::Float(0.0))?;
+    Ok(entity)
+}
+
+/// Binary scalar combine kernel: `out = op(a, b * b_scale + b_offset)`.
+/// Generic-slot kernel — bind input buffers to `op_a` and `op_b`, output to
+/// `op_out`. All three may alias.
+///
+/// Uniforms: `op: u32` (0=add, 1=sub, 2=mul, 3=div, 4=min, 5=max, 6=pow,
+/// default add), `b_scale: f32` (default 1.0), `b_offset: f32` (default 0.0).
+pub fn particles_kernel_attr_combine() -> error::Result<Entity> {
+    let shader = shader_load(particles::kernels::ATTR_COMBINE_PATH)?;
+    let entity = compute_create(shader)?;
+    compute_set(entity, "op", shader_value::ShaderValue::UInt(0))?;
+    compute_set(entity, "b_scale", shader_value::ShaderValue::Float(1.0))?;
+    compute_set(entity, "b_offset", shader_value::ShaderValue::Float(0.0))?;
+    Ok(entity)
+}
+
+/// 3-input lerp kernel: `out = mix(a, b, t * t_scale + t_offset)`, with `t`
+/// optionally clamped to [0, 1]. Generic-slot kernel — bind input buffers
+/// to `op_a`, `op_b`, `op_t` and output to `op_out`.
+///
+/// Uniforms: `t_scale: f32` (default 1.0), `t_offset: f32` (default 0.0),
+/// `t_clamp: u32` (default 1 — non-zero means clamp).
+pub fn particles_kernel_attr_mix() -> error::Result<Entity> {
+    let shader = shader_load(particles::kernels::ATTR_MIX_PATH)?;
+    let entity = compute_create(shader)?;
+    compute_set(entity, "t_scale", shader_value::ShaderValue::Float(1.0))?;
+    compute_set(entity, "t_offset", shader_value::ShaderValue::Float(0.0))?;
+    compute_set(entity, "t_clamp", shader_value::ShaderValue::UInt(1))?;
+    Ok(entity)
+}
+
+/// 1D ramp lookup kernel: samples a texture (typically a 1×N gradient
+/// image) using a scalar input attribute as the lookup coordinate and
+/// writes the four sampled channels (r/g/b/a) into four scalar output
+/// attributes. Generic-slot kernel — bind:
+///
+/// - `op_in`: scalar (f32) input attribute used as the lookup coord
+/// - `ramp`: the gradient texture
+/// - `ramp_sampler`: bind to the same texture (its sampler is reused)
+/// - `op_out_r`, `op_out_g`, `op_out_b`, `op_out_a`: scalar output attributes
+///
+/// Uniforms: `scale: f32` (default 1.0), `offset: f32` (default 0.0).
+/// The lookup coord is `clamp(in * scale + offset, 0, 1)`.
+pub fn particles_kernel_attr_lookup1d() -> error::Result<Entity> {
+    let shader = shader_load(particles::kernels::ATTR_LOOKUP1D_PATH)?;
+    let entity = compute_create(shader)?;
+    compute_set(entity, "scale", shader_value::ShaderValue::Float(1.0))?;
+    compute_set(entity, "offset", shader_value::ShaderValue::Float(0.0))?;
+    Ok(entity)
+}
+
+/// 2D ramp lookup kernel: samples a 2D texture (e.g., an HDR LUT) using
+/// two scalar input attributes for the u/v coords and writes the sampled
+/// color (times `color_scale`) into a vec4 output attribute. Generic-slot
+/// kernel — bind:
+///
+/// - `op_in_u`: scalar input attribute providing u
+/// - `op_in_v`: scalar input attribute providing v
+/// - `op_out`: vec4 output attribute (must not alias either input)
+/// - `ramp`: the 2D texture
+/// - `ramp_sampler`: bind to the same image as `ramp` (sampler reused)
+///
+/// Uniforms: `u_scale`, `u_offset`, `v_scale`, `v_offset` (default 1/0/1/0)
+/// — coords are clamped to [0, 1] after the affine transform.
+/// `color_scale` (default 1.0) scales the sampled color before writing.
+pub fn particles_kernel_attr_lookup2d() -> error::Result<Entity> {
+    let shader = shader_load(particles::kernels::ATTR_LOOKUP2D_PATH)?;
+    let entity = compute_create(shader)?;
+    compute_set(entity, "u_scale", shader_value::ShaderValue::Float(1.0))?;
+    compute_set(entity, "u_offset", shader_value::ShaderValue::Float(0.0))?;
+    compute_set(entity, "v_scale", shader_value::ShaderValue::Float(1.0))?;
+    compute_set(entity, "v_offset", shader_value::ShaderValue::Float(0.0))?;
+    compute_set(entity, "color_scale", shader_value::ShaderValue::Float(1.0))?;
+    Ok(entity)
+}
+
 /// Dispatch `compute_entity` against the [`Particles`]'s buffers. Each buffer
 /// is auto-bound by attribute name; undeclared bindings are skipped. Kernels
 /// must declare `@workgroup_size(64)`. Set uniforms via `compute_set` first.
