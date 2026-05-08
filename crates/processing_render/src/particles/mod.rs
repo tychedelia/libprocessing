@@ -1,4 +1,4 @@
-//! GPU-resident particle / instancing container. See `docs/particles.md`.
+//! gpu-resident particle / instancing container. See `docs/particles.md`.
 
 pub mod kernels;
 pub mod material;
@@ -54,7 +54,7 @@ pub struct Particles {
     /// `GpuInstanceBatchReservations` queues mesh batches one frame behind,
     /// so respawning per-frame loses the reservation.
     pub draw_entity: Option<Entity>,
-    /// Ring-buffer write cursor for `particles_emit`. Wraps at `capacity`.
+    /// ring-buffer write cursor for `particles_emit`. Wraps at `capacity`.
     pub emit_head: u32,
 }
 
@@ -64,7 +64,7 @@ impl Particles {
     }
 }
 
-/// Render-side marker pointing at the [`Particles`] entity to pack from.
+/// render-side marker pointing at the [`Particles`] entity to pack from.
 #[derive(Component, Clone, Copy)]
 pub struct ParticlesDraw {
     pub particles: Entity,

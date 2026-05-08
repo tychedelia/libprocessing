@@ -109,7 +109,7 @@ pub fn write_buffer_cpu(
     Ok(())
 }
 
-/// Caller must write bytes back via `get_mut_untracked` to avoid triggering
+/// caller must write bytes back via `get_mut_untracked` to avoid triggering
 /// a re-upload.
 pub fn read_buffer_gpu(
     In((handle, readback_buffer, size)): In<(Handle<ShaderBuffer>, WgpuBuffer, u64)>,

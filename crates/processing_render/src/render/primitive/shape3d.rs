@@ -3,7 +3,6 @@ use bevy::mesh::PrimitiveTopology;
 use bevy::prelude::*;
 use bevy::render::mesh::VertexAttributeValues;
 
-/// Ensure a mesh has vertex colors, inserting default white if missing.
 fn ensure_vertex_colors(mesh: &mut Mesh) {
     if mesh.attribute(Mesh::ATTRIBUTE_COLOR).is_none() {
         let vertex_count = mesh

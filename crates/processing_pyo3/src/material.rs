@@ -63,8 +63,11 @@ fn apply_albedo(entity: Entity, value: &Bound<'_, PyAny>) -> PyResult<()> {
     }
     if let Ok(c) = value.extract::<PyRef<PyColor>>() {
         let srgba: bevy::color::Srgba = c.0.into();
-        return material_set_albedo_color(entity, [srgba.red, srgba.green, srgba.blue, srgba.alpha])
-            .map_err(|e| PyRuntimeError::new_err(format!("{e}")));
+        return material_set_albedo_color(
+            entity,
+            [srgba.red, srgba.green, srgba.blue, srgba.alpha],
+        )
+        .map_err(|e| PyRuntimeError::new_err(format!("{e}")));
     }
     if let Ok(rgba) = value.extract::<[f32; 4]>() {
         return material_set_albedo_color(entity, rgba)

@@ -1,6 +1,6 @@
 use bevy::prelude::Entity;
 use processing::prelude::*;
-use processing_render::geometry as geometry;
+use processing_render::geometry;
 use pyo3::types::PyDict;
 use pyo3::{exceptions::PyRuntimeError, prelude::*};
 use std::collections::HashMap;
@@ -8,8 +8,7 @@ use std::collections::HashMap;
 use crate::compute::{Buffer, Compute};
 use crate::graphics::Geometry;
 
-/// Per-element format for an attribute.
-#[pyclass(eq, eq_int)]
+#[pyclass(eq, eq_int, from_py_object)]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum AttributeFormat {
     Float = 1,
@@ -47,9 +46,9 @@ impl AttributeFormat {
     }
 }
 
-/// Named typed attribute. Use the `position()`/`color()`/etc. classmethods for
+/// named typed attribute. use the `position()`/`color()`/etc. classmethods for
 /// builtins or `Attribute(name, format)` for custom ones.
-#[pyclass(unsendable, frozen, hash, eq)]
+#[pyclass(unsendable, frozen, hash, eq, from_py_object)]
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Attribute {
     pub(crate) entity: Entity,
@@ -65,19 +64,47 @@ impl Attribute {
     }
 
     #[staticmethod]
-    pub fn position() -> Self { Self { entity: geometry_attribute_position() } }
+    pub fn position() -> Self {
+        Self {
+            entity: geometry_attribute_position(),
+        }
+    }
     #[staticmethod]
-    pub fn normal() -> Self { Self { entity: geometry_attribute_normal() } }
+    pub fn normal() -> Self {
+        Self {
+            entity: geometry_attribute_normal(),
+        }
+    }
     #[staticmethod]
-    pub fn color() -> Self { Self { entity: geometry_attribute_color() } }
+    pub fn color() -> Self {
+        Self {
+            entity: geometry_attribute_color(),
+        }
+    }
     #[staticmethod]
-    pub fn uv() -> Self { Self { entity: geometry_attribute_uv() } }
+    pub fn uv() -> Self {
+        Self {
+            entity: geometry_attribute_uv(),
+        }
+    }
     #[staticmethod]
-    pub fn rotation() -> Self { Self { entity: geometry_attribute_rotation() } }
+    pub fn rotation() -> Self {
+        Self {
+            entity: geometry_attribute_rotation(),
+        }
+    }
     #[staticmethod]
-    pub fn scale() -> Self { Self { entity: geometry_attribute_scale() } }
+    pub fn scale() -> Self {
+        Self {
+            entity: geometry_attribute_scale(),
+        }
+    }
     #[staticmethod]
-    pub fn life() -> Self { Self { entity: geometry_attribute_life() } }
+    pub fn life() -> Self {
+        Self {
+            entity: geometry_attribute_life(),
+        }
+    }
 
     #[getter]
     pub fn name(&self) -> PyResult<String> {
@@ -102,7 +129,9 @@ pub struct Particles {
 }
 
 impl Particles {
-    fn build_name_index(attrs: &[Attribute]) -> PyResult<HashMap<String, (Entity, AttributeFormat)>> {
+    fn build_name_index(
+        attrs: &[Attribute],
+    ) -> PyResult<HashMap<String, (Entity, AttributeFormat)>> {
         let mut map = HashMap::with_capacity(attrs.len());
         for attr in attrs {
             let (name, fmt) = geometry_attribute_info(attr.entity)
@@ -115,8 +144,7 @@ impl Particles {
 
 #[pymethods]
 impl Particles {
-    /// Pass `capacity` for empty buffers, or `geometry` to seed positions
-    /// (and matching attributes) from a source mesh. Exactly one is required.
+    /// pass `capacity` for empty buffers, or `geometry` to seed from a source mesh.
     #[new]
     #[pyo3(signature = (capacity=None, attributes=None, geometry=None))]
     pub fn new(
@@ -159,9 +187,7 @@ impl Particles {
         particles_capacity(self.entity).map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    /// Backing `Buffer` for a registered attribute, or `None` if not registered.
-    /// The element type matches the attribute's format so `read()` returns
-    /// typed values.
+    /// backing `Buffer` for a registered attribute, or `None` if not registered.
     pub fn buffer(&self, attribute: &Attribute) -> PyResult<Option<Buffer>> {
         let buf = particles_buffer(self.entity, attribute.entity)
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
@@ -176,19 +202,10 @@ impl Particles {
         Ok(buf.map(|e| Buffer::from_entity(e, Some(element_type))))
     }
 
-    /// Dispatch a compute kernel against these particles' buffers. Buffers
-    /// are auto-bound by attribute name; kwargs are forwarded to
-    /// `compute.set(...)`. For example:
-    ///
-    /// ```python
-    /// p.apply(noise, scale=0.25, strength=0.02, time=t)
-    /// ```
+    /// dispatch a compute kernel against these particles' buffers. buffers are
+    /// auto-bound by attribute name; kwargs are forwarded to `compute.set(...)`.
     #[pyo3(signature = (compute, **kwargs))]
-    pub fn apply(
-        &self,
-        compute: &Compute,
-        kwargs: Option<&Bound<'_, PyDict>>,
-    ) -> PyResult<()> {
+    pub fn apply(&self, compute: &Compute, kwargs: Option<&Bound<'_, PyDict>>) -> PyResult<()> {
         if let Some(kwargs) = kwargs {
             compute.set(Some(kwargs))?;
         }
@@ -196,13 +213,9 @@ impl Particles {
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    /// Emit `n` particles into the next ring-buffer slots. Per-attribute data
-    /// is passed as kwargs keyed by attribute name; each value is a flat list
-    /// of `n * format.float_count()` floats.
-    ///
-    /// ```python
-    /// p.emit(50, position=[x0,y0,z0, x1,y1,z1, ...], color=[r0,g0,b0,a0, ...])
-    /// ```
+    /// emit `n` particles into the next ring-buffer slots. per-attribute data
+    /// is a kwarg keyed by attribute name; each value is a flat list of
+    /// `n * format.float_count()` floats.
     #[pyo3(signature = (n, **kwargs))]
     pub fn emit(&self, n: u32, kwargs: Option<&Bound<'_, PyDict>>) -> PyResult<()> {
         let Some(kwargs) = kwargs else {
@@ -230,13 +243,11 @@ impl Particles {
             let bytes: Vec<u8> = floats.iter().flat_map(|f| f.to_le_bytes()).collect();
             data.push((attr_entity, bytes));
         }
-        particles_emit(self.entity, n, data)
-            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+        particles_emit(self.entity, n, data).map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    /// Emit `n` particles via a GPU kernel. Buffer bindings and a
-    /// `emit_range: vec4<f32> = (base_slot, n, capacity, 0)` uniform are
-    /// auto-bound; set any other uniforms via `compute.set(...)` first.
+    /// emit `n` particles via a GPU kernel. auto-binds buffers and an
+    /// `emit_range: vec4<f32> = (base_slot, n, capacity, 0)` uniform.
     pub fn emit_gpu(&self, n: u32, compute: &Compute) -> PyResult<()> {
         particles_emit_gpu(self.entity, n, compute.entity)
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))

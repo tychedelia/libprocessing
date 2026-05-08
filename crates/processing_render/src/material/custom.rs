@@ -113,16 +113,16 @@ impl wesl::Resolver for ProcessingResolver<'_> {
         &'a self,
         path: &ModulePath,
     ) -> std::result::Result<Cow<'a, str>, wesl::ResolveError> {
-        // Check for the entry module first (its parsed path has Package origin)
+        // check for the entry module first (its parsed path has Package origin)
         if path.to_string() == "entry" {
             return Ok(Cow::Borrowed(self.entry_source));
         }
 
         match &path.origin {
             PathOrigin::Package(pkg) => {
-                // Self-referential package imports: within a package, imports to
+                // self-referential package imports: within a package, imports to
                 // the same package stack the name (e.g. "lygia/lygia/lygia/...").
-                // Collapse to the root package name before resolving.
+                // collapse to the root package name before resolving.
                 let root = pkg.split('/').next().unwrap();
                 let mut fixed = path.clone();
                 fixed.origin = PathOrigin::Package(root.to_string());

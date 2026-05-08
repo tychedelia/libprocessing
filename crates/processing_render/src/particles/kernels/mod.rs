@@ -1,4 +1,4 @@
-//! Built-in compute kernels for [`Particles`](super::Particles), embedded as
+//! built-in compute kernels for [`Particles`](super::Particles), embedded as
 //! assets and dispatched via `particles_apply`.
 
 use bevy::asset::embedded_asset;

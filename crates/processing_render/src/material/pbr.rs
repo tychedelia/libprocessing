@@ -3,7 +3,6 @@ use bevy::prelude::*;
 use crate::shader_value::ShaderValue;
 use processing_core::error::{ProcessingError, Result};
 
-/// Set a property on a StandardMaterial by name.
 pub fn set_property(
     material: &mut StandardMaterial,
     name: &str,

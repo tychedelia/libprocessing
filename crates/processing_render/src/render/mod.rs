@@ -27,12 +27,12 @@ use transform::TransformStack;
 
 use crate::{
     Flush,
-    particles::{Particles, ParticlesDraw},
     geometry::Geometry,
     gltf::GltfNodeTransform,
     image::Image,
     material::ProcessingMaterial,
     material::custom::CustomMaterial,
+    particles::{Particles, ParticlesDraw},
     render::{material::UntypedMaterial, primitive::rect},
     text::font::TextContext,
 };
@@ -82,7 +82,7 @@ impl BatchState {
 #[derive(Debug, Component)]
 pub struct RenderState {
     pub fill_color: Option<Color>,
-    /// Per-instance albedo buffer for [`Particles`] draws. Mutually exclusive
+    /// per-instance albedo buffer for [`Particles`] draws. mutually exclusive
     /// with `fill_color`.
     pub fill_buffer: Option<Entity>,
     pub stroke_color: Option<Color>,
@@ -498,7 +498,6 @@ pub fn flush_draw_commands(
                     );
                 }
                 DrawCommand::Point { x, y } => {
-                    // Point is rendered as a filled circle using stroke color and weight
                     if let Some(color) = state.stroke_color {
                         let d = state.stroke_weight;
                         let material_key =
@@ -723,7 +722,6 @@ pub fn flush_draw_commands(
                                 );
                             }
                             ShapeKind::Points => {
-                                // Each vertex rendered as a filled circle
                                 if let Some(color) = state.stroke_color {
                                     let d = state.stroke_weight;
                                     let material_key = material_key_with_color(
@@ -992,7 +990,10 @@ pub fn flush_draw_commands(
 
                     batch.draw_index += 1;
                 }
-                DrawCommand::Particles { particles, geometry } => {
+                DrawCommand::Particles {
+                    particles,
+                    geometry,
+                } => {
                     let Some((geometry_data, _)) = p_geometries.get(geometry).ok() else {
                         warn!("Could not find Geometry for entity {:?}", geometry);
                         continue;
@@ -1017,8 +1018,7 @@ pub fn flush_draw_commands(
                                 entity: mat_entity,
                                 blend_state,
                             } => {
-                                let Some(untyped) = p_material_handles.get(*mat_entity).ok()
-                                else {
+                                let Some(untyped) = p_material_handles.get(*mat_entity).ok() else {
                                     warn!("Could not find material for entity {:?}", mat_entity);
                                     continue;
                                 };
@@ -1485,8 +1485,7 @@ fn material_key_with_color(
     }
 }
 
-/// Allocate a fresh `ParticlesMaterial` reading albedo from `buf_entity`.
-/// Not cached: bind-group + uniform upload is cheap enough at one per frame.
+/// new `ParticlesMaterial` per call; not cached because per-frame alloc is cheap.
 fn particles_fill_material(
     res: &mut RenderResources,
     buf_entity: Entity,
@@ -1653,9 +1652,8 @@ fn add_shape3d(
     batch.draw_index += 1;
 }
 
-/// Creates a fullscreen quad by transforming NDC fullscreen by inverse of the clip-from-world matrix
-/// so that when the vertex shader applies clip_from_world, the vertices end up correctly back in
-/// NDC space.
+/// fullscreen quad built by transforming NDC corners by the inverse clip-from-world matrix,
+/// so the vertex shader's `clip_from_world` brings them back to NDC.
 fn create_ndc_background_quad(world_from_clip: Mat4, color: Color, with_uvs: bool) -> Mesh {
     use bevy::asset::RenderAssetUsages;
     use bevy::mesh::{Indices, PrimitiveTopology};
@@ -1686,7 +1684,6 @@ fn create_ndc_background_quad(world_from_clip: Mat4, color: Color, with_uvs: boo
     let color_array: [f32; 4] = color.to_linear().to_f32_array();
     let colors: Vec<[f32; 4]> = vec![color_array; 4];
 
-    // two tris
     let indices: Vec<u32> = vec![0, 1, 2, 0, 2, 3];
 
     let mut mesh = Mesh::new(

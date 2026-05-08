@@ -95,10 +95,10 @@ fn sketch() -> error::Result<()> {
         colors.push(rz);
         colors.push(1.0);
     }
-    let position_buf = particles_buffer(p, position_attr)?
-        .ok_or(error::ProcessingError::ParticlesNotFound)?;
-    let color_buf = particles_buffer(p, color_attr)?
-        .ok_or(error::ProcessingError::ParticlesNotFound)?;
+    let position_buf =
+        particles_buffer(p, position_attr)?.ok_or(error::ProcessingError::ParticlesNotFound)?;
+    let color_buf =
+        particles_buffer(p, color_attr)?.ok_or(error::ProcessingError::ParticlesNotFound)?;
     buffer_write(
         position_buf,
         positions.iter().flat_map(|f| f.to_le_bytes()).collect(),
@@ -108,7 +108,11 @@ fn sketch() -> error::Result<()> {
         colors.iter().flat_map(|f| f.to_le_bytes()).collect(),
     )?;
 
-    let mat = { let m = material_create_pbr()?; material_set_albedo_buffer(m, color_buf)?; m };
+    let mat = {
+        let m = material_create_pbr()?;
+        material_set_albedo_buffer(m, color_buf)?;
+        m
+    };
     let spin_shader = shader_create(SPIN_SHADER)?;
     let spin = compute_create(spin_shader)?;
 
@@ -123,7 +127,10 @@ fn sketch() -> error::Result<()> {
         graphics_record_command(graphics, DrawCommand::Material(mat))?;
         graphics_record_command(
             graphics,
-            DrawCommand::Particles { particles: p, geometry: cube },
+            DrawCommand::Particles {
+                particles: p,
+                geometry: cube,
+            },
         )?;
         graphics_end_draw(graphics)?;
 

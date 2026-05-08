@@ -68,18 +68,16 @@ fn sketch() -> error::Result<()> {
 
     let p = particles_create(
         capacity,
-        vec![
-            position_attr,
-            color_attr,
-            scale_attr,
-            life_attr,
-            age_attr,
-        ],
+        vec![position_attr, color_attr, scale_attr, life_attr, age_attr],
     )?;
-    let color_buf = particles_buffer(p, color_attr)?
-        .ok_or(error::ProcessingError::ParticlesNotFound)?;
+    let color_buf =
+        particles_buffer(p, color_attr)?.ok_or(error::ProcessingError::ParticlesNotFound)?;
 
-    let mat = { let m = material_create_unlit()?; material_set_albedo_buffer(m, color_buf)?; m };
+    let mat = {
+        let m = material_create_unlit()?;
+        material_set_albedo_buffer(m, color_buf)?;
+        m
+    };
     let aging_shader = shader_create(AGING_SHADER)?;
     let aging = compute_create(aging_shader)?;
 
@@ -97,7 +95,10 @@ fn sketch() -> error::Result<()> {
         graphics_record_command(graphics, DrawCommand::Material(mat))?;
         graphics_record_command(
             graphics,
-            DrawCommand::Particles { particles: p, geometry: sphere },
+            DrawCommand::Particles {
+                particles: p,
+                geometry: sphere,
+            },
         )?;
         graphics_end_draw(graphics)?;
 

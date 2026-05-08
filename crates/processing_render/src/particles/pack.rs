@@ -297,10 +297,7 @@ fn prepare_pack_bind_groups(
         let Some(gpu_position) = gpu_buffers.get(&data.position) else {
             continue;
         };
-        let gpu_rotation = data
-            .rotation
-            .as_ref()
-            .and_then(|h| gpu_buffers.get(h));
+        let gpu_rotation = data.rotation.as_ref().and_then(|h| gpu_buffers.get(h));
         if data.key.has_rotation && gpu_rotation.is_none() {
             continue;
         }

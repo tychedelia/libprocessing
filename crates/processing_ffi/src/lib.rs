@@ -2353,8 +2353,6 @@ pub unsafe extern "C" fn processing_shader_create(source: *const std::ffi::c_cha
     .unwrap_or(0)
 }
 
-/// Load a shader from a file path.
-///
 /// # Safety
 /// - `path` is a valid null-terminated C string.
 #[unsafe(no_mangle)]
@@ -2382,8 +2380,6 @@ pub extern "C" fn processing_buffer_create(size: u64) -> u64 {
         .unwrap_or(0)
 }
 
-/// Create a buffer initialized with data.
-///
 /// # Safety
 /// - `data` is valid for `len` byte reads.
 #[unsafe(no_mangle)]
@@ -2395,8 +2391,6 @@ pub unsafe extern "C" fn processing_buffer_create_with_data(data: *const u8, len
         .unwrap_or(0)
 }
 
-/// Write data to a buffer.
-///
 /// # Safety
 /// - `data` is valid for `len` byte reads.
 #[unsafe(no_mangle)]
@@ -2469,7 +2463,6 @@ pub unsafe extern "C" fn processing_compute_set_float(
 
 /// Set a vec3 uniform on a compute shader.
 ///
-/// # Safety
 /// - `name` is a valid null-terminated C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_compute_set_float3(

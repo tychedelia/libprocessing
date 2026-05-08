@@ -26,20 +26,27 @@ fn sketch() -> error::Result<()> {
     let position_attr = geometry_attribute_position();
     let color_attr = geometry_attribute_color();
     let p = particles_create(capacity, vec![position_attr, color_attr])?;
-    let position_buf = particles_buffer(p, position_attr)?
-        .ok_or(error::ProcessingError::ParticlesNotFound)?;
-    let color_buf = particles_buffer(p, color_attr)?
-        .ok_or(error::ProcessingError::ParticlesNotFound)?;
+    let position_buf =
+        particles_buffer(p, position_attr)?.ok_or(error::ProcessingError::ParticlesNotFound)?;
+    let color_buf =
+        particles_buffer(p, color_attr)?.ok_or(error::ProcessingError::ParticlesNotFound)?;
 
     // park unemitted slots off-screen so they don't pile up at the origin
     // while the ring buffer fills.
     let init_positions: Vec<f32> = (0..capacity * 3).map(|_| 1.0e6).collect();
     buffer_write(
         position_buf,
-        init_positions.iter().flat_map(|f| f.to_le_bytes()).collect(),
+        init_positions
+            .iter()
+            .flat_map(|f| f.to_le_bytes())
+            .collect(),
     )?;
 
-    let mat = { let m = material_create_unlit()?; material_set_albedo_buffer(m, color_buf)?; m };
+    let mat = {
+        let m = material_create_unlit()?;
+        material_set_albedo_buffer(m, color_buf)?;
+        m
+    };
 
     let mut frame: u32 = 0;
     while glfw_ctx.poll_events() {
@@ -51,7 +58,10 @@ fn sketch() -> error::Result<()> {
         graphics_record_command(graphics, DrawCommand::Material(mat))?;
         graphics_record_command(
             graphics,
-            DrawCommand::Particles { particles: p, geometry: sphere },
+            DrawCommand::Particles {
+                particles: p,
+                geometry: sphere,
+            },
         )?;
         graphics_end_draw(graphics)?;
 

@@ -224,9 +224,9 @@ pub struct BuiltinAttributes {
     pub normal: Entity,
     pub color: Entity,
     pub uv: Entity,
-    /// Per-instance rotation as a quaternion `(x, y, z, w)`. Field-only.
+    /// per-instance rotation as a quaternion `(x, y, z, w)`.
     pub rotation: Entity,
-    /// Per-instance scale `(x, y, z)`. Field-only.
+    /// per-instance scale `(x, y, z)`.
     pub scale: Entity,
     /// Per-particle life value: `> 0.0` = render, `<= 0.0` = skip in
     /// preprocessing. Field-only. The pack pass writes this into

@@ -156,9 +156,13 @@ fn sketch() -> error::Result<()> {
         ],
     )?;
 
-    let color_buf = particles_buffer(p, color_attr)?
-        .ok_or(error::ProcessingError::ParticlesNotFound)?;
-    let mat = { let m = material_create_pbr()?; material_set_albedo_buffer(m, color_buf)?; m };
+    let color_buf =
+        particles_buffer(p, color_attr)?.ok_or(error::ProcessingError::ParticlesNotFound)?;
+    let mat = {
+        let m = material_create_pbr()?;
+        material_set_albedo_buffer(m, color_buf)?;
+        m
+    };
 
     let spawn_shader = shader_create(SPAWN_SHADER)?;
     let spawn = compute_create(spawn_shader)?;
@@ -182,7 +186,10 @@ fn sketch() -> error::Result<()> {
         graphics_record_command(graphics, DrawCommand::Material(mat))?;
         graphics_record_command(
             graphics,
-            DrawCommand::Particles { particles: p, geometry: particle },
+            DrawCommand::Particles {
+                particles: p,
+                geometry: particle,
+            },
         )?;
         graphics_end_draw(graphics)?;
 

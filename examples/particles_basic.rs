@@ -40,8 +40,8 @@ fn sketch() -> error::Result<()> {
 
     let position_attr = geometry_attribute_position();
     let p = particles_create(capacity, vec![position_attr])?;
-    let position_buf = particles_buffer(p, position_attr)?
-        .ok_or(error::ProcessingError::ParticlesNotFound)?;
+    let position_buf =
+        particles_buffer(p, position_attr)?.ok_or(error::ProcessingError::ParticlesNotFound)?;
     buffer_write(position_buf, bytes)?;
 
     let pbr = material_create_pbr()?;
@@ -60,7 +60,10 @@ fn sketch() -> error::Result<()> {
         graphics_record_command(graphics, DrawCommand::Material(pbr))?;
         graphics_record_command(
             graphics,
-            DrawCommand::Particles { particles: p, geometry: sphere },
+            DrawCommand::Particles {
+                particles: p,
+                geometry: sphere,
+            },
         )?;
         graphics_end_draw(graphics)?;
     }

@@ -42,10 +42,10 @@ fn sketch() -> error::Result<()> {
     let position_attr = geometry_attribute_position();
     let color_attr = geometry_attribute_color();
     let p = particles_create(capacity, vec![position_attr, color_attr])?;
-    let position_buf = particles_buffer(p, position_attr)?
-        .ok_or(error::ProcessingError::ParticlesNotFound)?;
-    let color_buf = particles_buffer(p, color_attr)?
-        .ok_or(error::ProcessingError::ParticlesNotFound)?;
+    let position_buf =
+        particles_buffer(p, position_attr)?.ok_or(error::ProcessingError::ParticlesNotFound)?;
+    let color_buf =
+        particles_buffer(p, color_attr)?.ok_or(error::ProcessingError::ParticlesNotFound)?;
     buffer_write(
         position_buf,
         positions.iter().flat_map(|f| f.to_le_bytes()).collect(),
@@ -55,7 +55,11 @@ fn sketch() -> error::Result<()> {
         colors.iter().flat_map(|f| f.to_le_bytes()).collect(),
     )?;
 
-    let mat = { let m = material_create_unlit()?; material_set_albedo_buffer(m, color_buf)?; m };
+    let mat = {
+        let m = material_create_unlit()?;
+        material_set_albedo_buffer(m, color_buf)?;
+        m
+    };
 
     while glfw_ctx.poll_events() {
         graphics_begin_draw(graphics)?;
@@ -66,7 +70,10 @@ fn sketch() -> error::Result<()> {
         graphics_record_command(graphics, DrawCommand::Material(mat))?;
         graphics_record_command(
             graphics,
-            DrawCommand::Particles { particles: p, geometry: sphere },
+            DrawCommand::Particles {
+                particles: p,
+                geometry: sphere,
+            },
         )?;
         graphics_end_draw(graphics)?;
     }

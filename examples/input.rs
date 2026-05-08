@@ -41,7 +41,6 @@ fn sketch() -> error::Result<()> {
                 graphics,
                 DrawCommand::Fill(bevy::color::Color::srgb(0.25, 0.15, 0.2)),
             )?;
-        } else {
         }
 
         if input_mouse_is_pressed()? {
@@ -49,7 +48,6 @@ fn sketch() -> error::Result<()> {
                 graphics,
                 DrawCommand::Fill(bevy::color::Color::srgb(0.55, 0.25, 0.2)),
             )?;
-        } else {
         }
 
         graphics_record_command(
