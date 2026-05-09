@@ -1,11 +1,3 @@
-// vortex around an axis through center. for each particle within radius
-// (perpendicular to the axis), adds a tangential impulse in direction
-// cross(axis, radial). right-hand rule: positive strength rotates
-// counter-clockwise looking along the negative axis direction.
-//
-// falloff_mode matches Attract: 0 = constant, 1 = linear, 2 = smoothstep,
-// 3 = inverse-distance.
-
 struct Params {
     center: vec3<f32>,
     _pad0: f32,
@@ -35,7 +27,6 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let pos = vec3<f32>(position[pi], position[pi + 1u], position[pi + 2u]);
     let offset = pos - params.center;
 
-    // perpendicular component determines the radius from the axis line.
     let parallel = dot(offset, axis) * axis;
     let radial = offset - parallel;
     let r2 = dot(radial, radial);
@@ -52,7 +43,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     } else if params.falloff_mode == 2u {
         fall = n * n * (3.0 - 2.0 * n);
     } else if params.falloff_mode == 3u {
-        fall = 1.0 / (r + 1.0);
+        fall = n * n;
+    } else if params.falloff_mode == 4u {
+        fall = n * n * n;
+    } else if params.falloff_mode == 5u {
+        fall = params.radius / (r + params.radius);
     }
 
     let kick = tangent * (params.strength * fall);

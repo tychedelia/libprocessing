@@ -1,13 +1,3 @@
-// in-place per-particle scalar lerp:
-//   op_a = mix(op_a, op_b, clamp(op_t * t_scale + t_offset, 0, 1))
-//
-// op_a, op_b, op_t must point at distinct buffers (WebGPU buffer-aliasing
-// rule). set t_clamp = 0u to skip the [0, 1] clamp on t (useful for
-// additive blends).
-//
-// op_a, op_b, op_t are reserved namespaced names and won't be auto-bound
-// by particles_apply.
-
 struct Params {
     t_scale: f32,
     t_offset: f32,

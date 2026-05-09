@@ -1,13 +1,3 @@
-// in-place per-particle scalar linear transform: op = op * scale + offset.
-//
-// single-slot kernel; destination is read_write. WebGPU forbids binding
-// the same buffer as both `read` and `read_write` in one bind group, so
-// this is built for the in-place pattern.
-//
-// op is a reserved namespaced name and won't be auto-bound by
-// particles_apply; the caller must explicitly bind via
-// `compute.set("op", buffer)`.
-
 struct Params {
     scale: f32,
     offset: f32,

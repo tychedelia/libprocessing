@@ -1,18 +1,3 @@
-// in-place per-particle binary scalar combine:
-//   op_a = op(op_a, op_b * b_scale + b_offset)
-//
-// op_a and op_b must point at distinct buffers (WebGPU forbids aliasing
-// a read_write binding with another binding in the same bind group).
-//
-// op codes:
-//   0 = add, 1 = sub, 2 = mul,
-//   3 = div    (guarded against b' == 0; returns a)
-//   4 = min, 5 = max,
-//   6 = pow    (pow(max(a, 0), b'); undefined for negative a)
-//
-// op_a / op_b are reserved namespaced names and won't be auto-bound by
-// particles_apply.
-
 struct Params {
     op: u32,
     b_scale: f32,

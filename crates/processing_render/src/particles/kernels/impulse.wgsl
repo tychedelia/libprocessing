@@ -1,10 +1,3 @@
-// one-shot impulse: instantly displaces position outward and adds an
-// outward velocity bump for particles within radius of center. dispatch
-// host-side per event, not per frame.
-//
-// falloff_mode: 0 = constant, 1 = linear, 2 = quadratic (n^2),
-// 3 = cubic (n^3). higher exponents concentrate at the center.
-
 struct Params {
     center: vec3<f32>,
     radius: f32,
@@ -39,9 +32,13 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     if params.falloff_mode == 1u {
         fall = n;
     } else if params.falloff_mode == 2u {
-        fall = n * n;
+        fall = n * n * (3.0 - 2.0 * n);
     } else if params.falloff_mode == 3u {
+        fall = n * n;
+    } else if params.falloff_mode == 4u {
         fall = n * n * n;
+    } else if params.falloff_mode == 5u {
+        fall = params.radius / (d + params.radius);
     }
 
     let pos_push = dir * (params.position_kick * fall);

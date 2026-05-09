@@ -1,13 +1,3 @@
-// per-particle 1D ramp lookup:
-//   out = sample(ramp, t) where t = clamp(in_attr * scale + offset, 0, 1)
-//
-// to skip channels, bind the same buffer to multiple op_out_* slots —
-// bevy_naga_reflect only complains about unbound declared slots, not
-// over-bound buffers.
-//
-// ramp is sampled as a 2D texture at v=0.5 so it works with both 2D 1×N
-// gradient textures and proper 1D textures (read as 2D with height 1).
-
 struct Params {
     scale: f32,
     offset: f32,

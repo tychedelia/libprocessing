@@ -1,14 +1,7 @@
-// sphere bounds. for particles outside radius of center:
-//   0 = clamp:   snap to surface, zero outward velocity component
-//   1 = reflect: snap to surface, flip outward velocity component
-//   2 = wrap:    teleport to the opposite side
-//   3 = soft:    add a force toward the surface proportional to overshoot
-// velocity_cap > 0 then additionally clamps |velocity|.
-
 struct Params {
     center: vec3<f32>,
     radius: f32,
-    velocity_cap: f32,
+    max_speed: f32,
     soft_strength: f32,
     mode: u32,
     _pad: u32,
@@ -41,22 +34,20 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             let outward = max(0.0, dot(vel, normal));
             vel = vel - normal * outward;
         } else if params.mode == 1u {
-            pos = params.center + normal * params.radius;
+            let overshoot = d - params.radius;
+            pos = pos - normal * (2.0 * overshoot);
             let outward = max(0.0, dot(vel, normal));
             vel = vel - normal * (2.0 * outward);
-        } else if params.mode == 2u {
-            pos = params.center - normal * params.radius;
-        } else {
-            // soft pull, default for any other value
+        } else if params.mode == 3u {
             vel = vel - normal * (params.soft_strength * (d - params.radius));
         }
     }
 
-    if params.velocity_cap > 0.0 {
+    if params.max_speed > 0.0 {
         let speed2 = dot(vel, vel);
-        let cap2 = params.velocity_cap * params.velocity_cap;
+        let cap2 = params.max_speed * params.max_speed;
         if speed2 > cap2 {
-            vel = vel * (params.velocity_cap * inverseSqrt(speed2));
+            vel = vel * (params.max_speed * inverseSqrt(speed2));
         }
     }
 

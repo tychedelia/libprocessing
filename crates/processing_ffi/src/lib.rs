@@ -2735,9 +2735,41 @@ pub extern "C" fn processing_particles_kernel_vortex() -> u64 {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn processing_particles_kernel_bounds() -> u64 {
+pub extern "C" fn processing_particles_kernel_force() -> u64 {
     error::clear_error();
-    error::check(particles_kernel_bounds).map(|e| e.to_bits()).unwrap_or(0)
+    error::check(particles_kernel_force).map(|e| e.to_bits()).unwrap_or(0)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_kernel_integrate() -> u64 {
+    error::clear_error();
+    error::check(particles_kernel_integrate).map(|e| e.to_bits()).unwrap_or(0)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_kernel_age() -> u64 {
+    error::clear_error();
+    error::check(particles_kernel_age).map(|e| e.to_bits()).unwrap_or(0)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_kernel_bounds_sphere() -> u64 {
+    error::clear_error();
+    error::check(particles_kernel_bounds_sphere).map(|e| e.to_bits()).unwrap_or(0)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_kernel_bounds_box() -> u64 {
+    error::clear_error();
+    error::check(particles_kernel_bounds_box).map(|e| e.to_bits()).unwrap_or(0)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_kernel_bounds_geometry(geometry_entity: u64) -> u64 {
+    error::clear_error();
+    error::check(|| particles_kernel_bounds_geometry(Entity::from_bits(geometry_entity)))
+        .map(|e| e.to_bits())
+        .unwrap_or(0)
 }
 
 #[unsafe(no_mangle)]

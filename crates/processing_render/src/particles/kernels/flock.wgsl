@@ -1,20 +1,12 @@
-// flocking: separation, alignment, cohesion via tiled brute-force neighbor
-// scan, applied as steering force, then position integrates. each iteration
-// loads a tile of N=workgroup_size particles into shared memory once for
-// reuse by all threads in the workgroup.
-//
-// does not handle bounds, drag, or external forces — chain kernelBounds,
-// kernelDrag, or kernelAttract after this.
-
 struct Params {
-    sep_distance: f32,         // separation neighborhood radius
-    nbr_distance: f32,         // alignment/cohesion neighborhood radius
+    sep_distance: f32,
+    neighbor_distance: f32,
     weight_separation: f32,
     weight_alignment: f32,
     weight_cohesion: f32,
     max_speed: f32,
     max_force: f32,
-    min_speed: f32,            // 0 disables; otherwise floor speed
+    min_speed: f32,
 }
 
 @group(0) @binding(0) var<storage, read_write> position: array<f32>;
@@ -47,7 +39,7 @@ fn main(
     let alive = i < count;
 
     let sep_d2 = params.sep_distance * params.sep_distance;
-    let nbr_d2 = params.nbr_distance * params.nbr_distance;
+    let neighbor_d2 = params.neighbor_distance * params.neighbor_distance;
 
     var pos = vec3<f32>(0.0);
     var vel = vec3<f32>(0.0);
@@ -83,7 +75,7 @@ fn main(
                 let diff = pos - s_pos[k];
                 let d2 = dot(diff, diff);
 
-                if d2 > 0.000001 && d2 < nbr_d2 {
+                if d2 > 0.000001 && d2 < neighbor_d2 {
                     if d2 < sep_d2 {
                         sep_steer += diff / d2;
                         sep_count += 1u;
@@ -107,7 +99,6 @@ fn main(
     if flock_count > 0u {
         force += steer_toward(ali_sum / f32(flock_count), vel,
                               params.max_speed, params.max_force) * params.weight_alignment;
-        // coh_sum is sum of (self - neighbor); negate for centroid pull.
         force += steer_toward(-coh_sum / f32(flock_count), vel,
                               params.max_speed, params.max_force) * params.weight_cohesion;
     }

@@ -1,11 +1,3 @@
-// per-particle scalar weight from distance to a sphere primitive. writes
-// `weight: f32`. outside the sphere = 0; inside = (0, 1] per falloff_mode:
-//   0 = hard       (1 inside, 0 outside)
-//   1 = linear     (1 - d/r)
-//   2 = smoothstep (smoothstep(1 - d/r))
-//   3 = quadratic  ((1 - d/r)^2)
-//   4 = cubic      ((1 - d/r)^3)
-
 struct Params {
     center: vec3<f32>,
     radius: f32,
@@ -33,17 +25,19 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     var w: f32 = 0.0;
     if d2 < r2 {
-        let n = 1.0 - sqrt(d2) / params.radius;
-        if params.falloff_mode == 0u {
-            w = 1.0;
-        } else if params.falloff_mode == 1u {
+        let d = sqrt(d2);
+        let n = 1.0 - d / params.radius;
+        w = 1.0;
+        if params.falloff_mode == 1u {
             w = n;
         } else if params.falloff_mode == 2u {
             w = n * n * (3.0 - 2.0 * n);
         } else if params.falloff_mode == 3u {
             w = n * n;
-        } else {
+        } else if params.falloff_mode == 4u {
             w = n * n * n;
+        } else if params.falloff_mode == 5u {
+            w = params.radius / (d + params.radius);
         }
     }
 

@@ -297,11 +297,54 @@ impl Particles {
         Ok(Compute::from_entity(entity))
     }
 
-    /// Bounce / wrap at boundaries. Uniforms: `center`, `radius`, `mode`,
-    /// `soft_strength`, `velocity_cap`.
+    /// Constant directional force (wind/gravity). Uniforms: `direction`,
+    /// `strength`.
     #[staticmethod]
-    pub fn bounds() -> PyResult<Compute> {
-        let entity = particles_kernel_bounds()
+    pub fn force() -> PyResult<Compute> {
+        let entity = particles_kernel_force()
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        Ok(Compute::from_entity(entity))
+    }
+
+    /// Euler integration: `position += velocity * dt`. Uniform: `dt`.
+    #[staticmethod]
+    pub fn integrate() -> PyResult<Compute> {
+        let entity = particles_kernel_integrate()
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        Ok(Compute::from_entity(entity))
+    }
+
+    /// Increment per-particle `age`; zero `life` once `age >= life`.
+    /// Uniform: `dt`. Reads/writes `age`, `life`.
+    #[staticmethod]
+    pub fn age() -> PyResult<Compute> {
+        let entity = particles_kernel_age()
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        Ok(Compute::from_entity(entity))
+    }
+
+    /// Sphere bounds. Uniforms: `center`, `radius`, `mode`, `soft_strength`,
+    /// `max_speed`.
+    #[staticmethod]
+    pub fn bounds_sphere() -> PyResult<Compute> {
+        let entity = particles_kernel_bounds_sphere()
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        Ok(Compute::from_entity(entity))
+    }
+
+    /// Axis-aligned box bounds. Uniforms: `aabb_min`, `aabb_max`, `mode`
+    /// (clamp/reflect/wrap/soft), `soft_strength`, `max_speed`.
+    #[staticmethod]
+    pub fn bounds_box() -> PyResult<Compute> {
+        let entity = particles_kernel_bounds_box()
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        Ok(Compute::from_entity(entity))
+    }
+
+    /// Box bounds sized to a source [`Geometry`]'s vertex AABB.
+    #[staticmethod]
+    pub fn bounds_geometry(geometry: &Geometry) -> PyResult<Compute> {
+        let entity = particles_kernel_bounds_geometry(geometry.entity)
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
         Ok(Compute::from_entity(entity))
     }

@@ -1,11 +1,3 @@
-// point attractor / repeller. radial impulse to velocity for particles
-// within radius of center. positive strength attracts; negative repels.
-// falloff_mode:
-//   0 = constant inside radius
-//   1 = linear (1 - d/r)
-//   2 = smoothstep ((1 - d/r)^2 * (3 - 2*(1 - d/r)))
-//   3 = inverse-distance (1 / (d + 1))
-
 struct Params {
     center: vec3<f32>,
     _pad0: f32,
@@ -42,7 +34,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     } else if params.falloff_mode == 2u {
         fall = n * n * (3.0 - 2.0 * n);
     } else if params.falloff_mode == 3u {
-        fall = 1.0 / (d + 1.0);
+        fall = n * n;
+    } else if params.falloff_mode == 4u {
+        fall = n * n * n;
+    } else if params.falloff_mode == 5u {
+        fall = params.radius / (d + params.radius);
     }
 
     let kick = dir * (params.strength * fall);

@@ -1,32 +1,16 @@
-// rejection-sampled volume scatter inside a closed source mesh. dispatched
-// via particles_emit_gpu.
-//
-// algorithm: pick a random point in the mesh's AABB; cast a ray in a fixed
-// direction and count triangle hits via Möller-Trumbore. odd hits = inside
-// (parity test). retry up to params.max_attempts. slots that fail are
-// left culled — emit_head still advances, so they're skipped this frame
-// and reused on the next ring-buffer cycle.
-//
-// scale is initialized to 1 so a follow-up attr_linear decay fades without
-// requiring the user to also seed the scale buffer. life is initialized
-// to 1 so fresh slots pass GPU preprocess (life <= 0 = culled).
-//
-// cost: O(face_count × attempts) per emitted particle. above a few thousand
-// faces, consider preprocessing into a BVH or signed distance field.
-//
-// bindings:
-//   source_position: deinterleaved mesh position attribute (3 f32s/vertex).
-//   source_indices: dense u32 index buffer (3 u32s/face).
-//   position / age / life: particle attributes.
-//   params: AABB, face_count, max_attempts, seed.
-//   emit_range: (base_slot, count, capacity, 0).
-
 struct Params {
     aabb_min: vec4<f32>,
     aabb_max: vec4<f32>,
     face_count: u32,
     max_attempts: u32,
     seed: u32,
+    _pad: u32,
+}
+
+struct EmitRange {
+    emit_base: u32,
+    emit_count: u32,
+    emit_capacity: u32,
     _pad: u32,
 }
 
@@ -37,7 +21,7 @@ struct Params {
 @group(0) @binding(4) var<storage, read_write> age:             array<f32>;
 @group(0) @binding(5) var<storage, read_write> life:            array<f32>;
 @group(0) @binding(6) var<uniform>             params:          Params;
-@group(0) @binding(7) var<uniform>             emit_range:      vec4<f32>;
+@group(0) @binding(7) var<uniform>             emit_range:      EmitRange;
 
 fn hash(n: u32) -> u32 {
     var x = n;
@@ -61,8 +45,6 @@ fn fetch_vertex(i: u32) -> vec3<f32> {
     );
 }
 
-// Möller-Trumbore. returns t >= 0 if `ro + t*rd` hits the triangle in
-// front of the ray origin, or a negative sentinel otherwise.
 fn ray_triangle(
     ro: vec3<f32>, rd: vec3<f32>,
     p0: vec3<f32>, p1: vec3<f32>, p2: vec3<f32>,
@@ -82,10 +64,7 @@ fn ray_triangle(
     return f * dot(e2, q);
 }
 
-// parity test: arbitrary unit ray, count crossings; inside iff odd.
 fn point_inside(p: vec3<f32>) -> bool {
-    // skew direction off the principal axes to avoid degenerate hits on
-    // axis-aligned triangle edges.
     let rd = normalize(vec3<f32>(0.5773, 0.5774, 0.5775));
     var hits = 0u;
     for (var f = 0u; f < params.face_count; f = f + 1u) {
@@ -103,9 +82,9 @@ fn point_inside(p: vec3<f32>) -> bool {
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let local_i = gid.x;
-    if local_i >= u32(emit_range.y) { return; }
-    let base = u32(emit_range.x);
-    let cap  = u32(emit_range.z);
+    if local_i >= emit_range.emit_count { return; }
+    let base = emit_range.emit_base;
+    let cap  = emit_range.emit_capacity;
     let slot = (base + local_i) % cap;
     let seed_base = params.seed ^ (base + local_i);
 

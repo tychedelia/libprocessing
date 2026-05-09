@@ -1,11 +1,31 @@
 //! gpu-resident particle / instancing container. See `docs/particles.md`.
 
+mod emit;
 pub mod kernels;
 pub mod material;
 pub mod pack;
+mod scatter;
+
+pub use emit::{particles_apply, particles_emit, particles_emit_gpu};
+pub use kernels::{
+    BOUNDS_CLAMP, BOUNDS_REFLECT, BOUNDS_SOFT, BOUNDS_WRAP, COMBINE_ADD, COMBINE_DIV, COMBINE_MAX,
+    COMBINE_MIN, COMBINE_MUL, COMBINE_POW, COMBINE_SUB, FALLOFF_CONST, FALLOFF_CUBIC,
+    FALLOFF_INVERSE, FALLOFF_LINEAR, FALLOFF_QUADRATIC, FALLOFF_SMOOTHSTEP,
+    particles_kernel_age, particles_kernel_attr_combine, particles_kernel_attr_linear,
+    particles_kernel_attr_lookup1d, particles_kernel_attr_lookup2d, particles_kernel_attr_mix,
+    particles_kernel_attract, particles_kernel_bounds_box, particles_kernel_bounds_geometry,
+    particles_kernel_bounds_sphere, particles_kernel_drag, particles_kernel_field,
+    particles_kernel_flock, particles_kernel_force, particles_kernel_impulse,
+    particles_kernel_integrate, particles_kernel_noise, particles_kernel_orient,
+    particles_kernel_transform, particles_kernel_vortex,
+};
+pub use scatter::{
+    particles_scatter_create, particles_scatter_volume_create, prepare_scatter_source,
+    prepare_scatter_volume_source,
+};
 
 use bevy::asset::RenderAssetUsages;
-use bevy::mesh::{Indices, VertexAttributeValues};
+use bevy::mesh::VertexAttributeValues;
 use bevy::pbr::gpu_instance_batch::GpuInstanceBatchPlugin;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
@@ -15,7 +35,8 @@ use bevy::render::render_resource::{BufferDescriptor, BufferUsages};
 use bevy::render::renderer::RenderDevice;
 use bevy::render::storage::ShaderBuffer;
 
-use processing_core::error::{ProcessingError, Result};
+use processing_core::app_mut;
+use processing_core::error::{self, ProcessingError, Result};
 
 use crate::compute;
 use crate::geometry::{Attribute, AttributeFormat, Geometry};
@@ -204,134 +225,6 @@ fn attribute_values_to_bytes(
     }
 }
 
-// deinterleaves the mesh and pulls out positions + a dense u32 index list.
-// the dense index list sidesteps the mesh allocator's slab offset and any
-// u16 index format.
-fn extract_scatter_geometry(mesh: &mut Mesh) -> Result<(Vec<[f32; 3]>, Vec<u32>)> {
-    mesh.deinterleave();
-
-    let positions = match mesh.attribute(Mesh::ATTRIBUTE_POSITION) {
-        Some(VertexAttributeValues::Float32x3(p)) => p.clone(),
-        _ => {
-            return Err(ProcessingError::InvalidArgument(
-                "scatter source mesh has no Float32x3 position attribute".to_string(),
-            ));
-        }
-    };
-
-    let dense_indices: Vec<u32> = match mesh.indices() {
-        Some(Indices::U16(v)) => v.iter().map(|&i| i as u32).collect(),
-        Some(Indices::U32(v)) => v.clone(),
-        None => {
-            if positions.len() % 3 != 0 {
-                return Err(ProcessingError::InvalidArgument(
-                    "scatter source mesh has no indices and a vertex count that isn't a \
-                     multiple of 3"
-                        .to_string(),
-                ));
-            }
-            (0..positions.len() as u32).collect()
-        }
-    };
-
-    if dense_indices.len() % 3 != 0 {
-        return Err(ProcessingError::InvalidArgument(
-            "scatter source mesh has a non-triangle index list".to_string(),
-        ));
-    }
-    if dense_indices.is_empty() {
-        return Err(ProcessingError::InvalidArgument(
-            "scatter source mesh has no triangles".to_string(),
-        ));
-    }
-
-    Ok((positions, dense_indices))
-}
-
-/// CPU side of `particles_scatter_create`. Deinterleaves the source mesh so
-/// its position attribute becomes its own GPU buffer, then builds a normalized
-/// face-area CDF and a dense `u32` index list for area-weighted triangle
-/// sampling on the GPU.
-///
-/// Returns `(cdf_bytes, indices_bytes, face_count)`.
-pub fn prepare_scatter_source(
-    In(geom_entity): In<Entity>,
-    geometries: Query<&Geometry>,
-    mut meshes: ResMut<Assets<Mesh>>,
-) -> Result<(Vec<u8>, Vec<u8>, u32)> {
-    let geom = geometries
-        .get(geom_entity)
-        .map_err(|_| ProcessingError::GeometryNotFound)?;
-    let mesh = meshes
-        .get_mut(&geom.handle)
-        .ok_or(ProcessingError::GeometryNotFound)?
-        .into_inner();
-
-    let (positions, dense_indices) = extract_scatter_geometry(mesh)?;
-    let face_count = (dense_indices.len() / 3) as u32;
-
-    let mut cum = Vec::with_capacity(face_count as usize);
-    let mut total = 0.0_f32;
-    for face in 0..face_count as usize {
-        let i0 = dense_indices[face * 3] as usize;
-        let i1 = dense_indices[face * 3 + 1] as usize;
-        let i2 = dense_indices[face * 3 + 2] as usize;
-        let p0 = Vec3::from_array(positions[i0]);
-        let p1 = Vec3::from_array(positions[i1]);
-        let p2 = Vec3::from_array(positions[i2]);
-        let area = 0.5 * (p1 - p0).cross(p2 - p0).length();
-        total += area;
-        cum.push(total);
-    }
-    if total <= 0.0 {
-        return Err(ProcessingError::InvalidArgument(
-            "scatter source mesh has zero surface area".to_string(),
-        ));
-    }
-    let inv = 1.0 / total;
-    for v in &mut cum {
-        *v *= inv;
-    }
-
-    let cdf_bytes: Vec<u8> = cum.iter().flat_map(|f| f.to_le_bytes()).collect();
-    let indices_bytes: Vec<u8> = dense_indices.iter().flat_map(|i| i.to_le_bytes()).collect();
-    Ok((cdf_bytes, indices_bytes, face_count))
-}
-
-/// CPU side of `particles_scatter_volume_create`. Like
-/// [`prepare_scatter_source`] but returns the AABB instead of a CDF; volume
-/// scatter samples uniformly inside the AABB and rejection-tests against the
-/// mesh on the GPU.
-///
-/// Returns `(indices_bytes, aabb_min, aabb_max, face_count)`.
-pub fn prepare_scatter_volume_source(
-    In(geom_entity): In<Entity>,
-    geometries: Query<&Geometry>,
-    mut meshes: ResMut<Assets<Mesh>>,
-) -> Result<(Vec<u8>, [f32; 3], [f32; 3], u32)> {
-    let geom = geometries
-        .get(geom_entity)
-        .map_err(|_| ProcessingError::GeometryNotFound)?;
-    let mesh = meshes
-        .get_mut(&geom.handle)
-        .ok_or(ProcessingError::GeometryNotFound)?
-        .into_inner();
-
-    let (positions, dense_indices) = extract_scatter_geometry(mesh)?;
-    let face_count = (dense_indices.len() / 3) as u32;
-
-    let mut min = Vec3::splat(f32::INFINITY);
-    let mut max = Vec3::splat(f32::NEG_INFINITY);
-    for p in &positions {
-        let v = Vec3::from_array(*p);
-        min = min.min(v);
-        max = max.max(v);
-    }
-
-    let indices_bytes: Vec<u8> = dense_indices.iter().flat_map(|i| i.to_le_bytes()).collect();
-    Ok((indices_bytes, min.to_array(), max.to_array(), face_count))
-}
-
 pub fn destroy(
     In(entity): In<Entity>,
     mut commands: Commands,
@@ -348,4 +241,60 @@ pub fn destroy(
     }
     commands.entity(entity).despawn();
     Ok(())
+}
+
+pub fn particles_create(
+    capacity: u32,
+    attribute_entities: Vec<Entity>,
+) -> error::Result<Entity> {
+    app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(create, (capacity, attribute_entities))
+            .unwrap()
+    })
+}
+
+/// capacity = `geometry`'s vertex count. Builtin attributes (`position`,
+/// `normal`, `color`, `uv`) are seeded from the matching mesh attribute when
+/// formats line up; everything else is zero-initialized.
+pub fn particles_create_from_geometry(
+    geometry_entity: Entity,
+    attribute_entities: Vec<Entity>,
+) -> error::Result<Entity> {
+    app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(create_from_geometry, (geometry_entity, attribute_entities))
+            .unwrap()
+    })
+}
+
+pub fn particles_destroy(entity: Entity) -> error::Result<()> {
+    app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(destroy, entity)
+            .unwrap()
+    })
+}
+
+pub fn particles_capacity(entity: Entity) -> error::Result<u32> {
+    app_mut(|app| {
+        Ok(app
+            .world()
+            .get::<Particles>(entity)
+            .ok_or(error::ProcessingError::ParticlesNotFound)?
+            .capacity)
+    })
+}
+
+pub fn particles_buffer(
+    entity: Entity,
+    attribute_entity: Entity,
+) -> error::Result<Option<Entity>> {
+    app_mut(|app| {
+        Ok(app
+            .world()
+            .get::<Particles>(entity)
+            .ok_or(error::ProcessingError::ParticlesNotFound)?
+            .buffer(attribute_entity))
+    })
 }
