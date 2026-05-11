@@ -2735,6 +2735,23 @@ pub extern "C" fn processing_particles_kernel_vortex() -> u64 {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn processing_particles_attribute_add(
+    particles_id: u64,
+    attribute_id: u64,
+) -> i32 {
+    error::clear_error();
+    error::check(|| {
+        particles_attribute_add(
+            Entity::from_bits(particles_id),
+            Entity::from_bits(attribute_id),
+            None,
+        )
+    })
+    .map(|_| 0)
+    .unwrap_or(-1)
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn processing_particles_kernel_force() -> u64 {
     error::clear_error();
     error::check(particles_kernel_force).map(|e| e.to_bits()).unwrap_or(0)

@@ -187,6 +187,27 @@ impl Particles {
         particles_capacity(self.entity).map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
+    /// add an attribute to this particle field, allocating its per-particle
+    /// buffer. pass `default` to seed every slot with that value (must match
+    /// the attribute format); omit for zero-init.
+    #[pyo3(signature = (attribute, default=None))]
+    pub fn add_attribute(
+        &mut self,
+        attribute: PyRef<Attribute>,
+        default: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<()> {
+        let default_value = default
+            .map(crate::material::py_to_shader_value)
+            .transpose()?;
+        particles_attribute_add(self.entity, attribute.entity, default_value)
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        let (name, fmt) = geometry_attribute_info(attribute.entity)
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        self.name_to_attr
+            .insert(name, (attribute.entity, AttributeFormat::from_inner(fmt)));
+        Ok(())
+    }
+
     /// backing `Buffer` for a registered attribute, or `None` if not registered.
     pub fn buffer(&self, attribute: &Attribute) -> PyResult<Option<Buffer>> {
         let buf = particles_buffer(self.entity, attribute.entity)

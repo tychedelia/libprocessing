@@ -243,6 +243,51 @@ pub fn destroy(
     Ok(())
 }
 
+pub fn add_attribute(
+    In((particles_entity, attribute_entity, default_bytes)): In<(Entity, Entity, Vec<u8>)>,
+    mut commands: Commands,
+    mut particles_q: Query<&mut Particles>,
+    attributes: Query<&Attribute>,
+    mut shader_buffers: ResMut<Assets<ShaderBuffer>>,
+    render_device: Res<RenderDevice>,
+) -> Result<()> {
+    let mut particles = particles_q
+        .get_mut(particles_entity)
+        .map_err(|_| ProcessingError::ParticlesNotFound)?;
+    if particles.buffers.contains_key(&attribute_entity) {
+        return Err(ProcessingError::InvalidArgument(format!(
+            "particles already have attribute {attribute_entity:?}"
+        )));
+    }
+    let attr = attributes
+        .get(attribute_entity)
+        .map_err(|_| ProcessingError::InvalidEntity)?;
+    let elem_size = attr.format.byte_size() as usize;
+    let capacity = particles.capacity as usize;
+    let byte_size = capacity * elem_size;
+
+    let initial = if default_bytes.is_empty() {
+        vec![0u8; byte_size]
+    } else if default_bytes.len() != elem_size {
+        return Err(ProcessingError::InvalidArgument(format!(
+            "default value byte size {} does not match attribute '{}' format byte size {}",
+            default_bytes.len(),
+            attr.name,
+            elem_size,
+        )));
+    } else {
+        let mut bytes = Vec::with_capacity(byte_size);
+        for _ in 0..capacity {
+            bytes.extend_from_slice(&default_bytes);
+        }
+        bytes
+    };
+
+    let buffer_entity = make_buffer(&mut commands, &mut shader_buffers, &render_device, &initial);
+    particles.buffers.insert(attribute_entity, buffer_entity);
+    Ok(())
+}
+
 pub fn particles_create(
     capacity: u32,
     attribute_entities: Vec<Entity>,
@@ -296,5 +341,34 @@ pub fn particles_buffer(
             .get::<Particles>(entity)
             .ok_or(error::ProcessingError::ParticlesNotFound)?
             .buffer(attribute_entity))
+    })
+}
+
+/// Add an attribute to an existing particle field, allocating its per-particle
+/// buffer (sized to the field's capacity) and optionally seeding every slot
+/// with `default`. Pass `None` to zero-initialize. Errors if the attribute is
+/// already attached to this field, or if `default`'s type doesn't match the
+/// attribute's format.
+pub fn particles_attribute_add(
+    particles_entity: Entity,
+    attribute_entity: Entity,
+    default: Option<crate::shader_value::ShaderValue>,
+) -> error::Result<()> {
+    let default_bytes = match default {
+        None => Vec::new(),
+        Some(v) => v.to_bytes().ok_or_else(|| {
+            error::ProcessingError::InvalidArgument(
+                "default must be a scalar/vector ShaderValue, not a Buffer/Texture/Mesh*"
+                    .to_string(),
+            )
+        })?,
+    };
+    app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(
+                add_attribute,
+                (particles_entity, attribute_entity, default_bytes),
+            )
+            .unwrap()
     })
 }
