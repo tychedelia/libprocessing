@@ -62,4 +62,6 @@ pub enum ProcessingError {
     FontNotFound,
     #[error("Font load error: {0}")]
     FontLoadError(String),
+    #[error("Noise source not found")]
+    NoiseNotFound,
 }

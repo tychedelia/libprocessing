@@ -9,6 +9,7 @@ pub use processing_midi::{
     midi_refresh_ports,
 };
 pub use processing_render::{
+    noise::{NoiseDistance, NoiseKind, WorleyMode},
     render::command::{
         ArcMode, BlendMode, DrawCommand, ShapeKind, ShapeMode, StrokeCapMode, StrokeJoinMode,
         TextAlignH, TextAlignV, TextStyle, TextWrapMode, custom_blend_state,

@@ -2912,3 +2912,77 @@ fn key_code_to_u32(kc: KeyCode) -> u32 {
         _ => 0,
     }
 }
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_noise_create() -> u64 {
+    error::clear_error();
+    error::check(noise_create)
+        .map(|e| e.to_bits())
+        .unwrap_or(0)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_noise_destroy(noise_id: u64) {
+    error::clear_error();
+    error::check(|| noise_destroy(Entity::from_bits(noise_id)));
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_noise_mode(noise_id: u64, kind: u8) {
+    error::clear_error();
+    error::check(|| noise_mode(Entity::from_bits(noise_id), kind.into()));
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_noise_seed(noise_id: u64, seed: u32) {
+    error::clear_error();
+    error::check(|| noise_seed(Entity::from_bits(noise_id), seed));
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_noise_detail(noise_id: u64, octaves: u32, persistence: f32) {
+    error::clear_error();
+    error::check(|| noise_detail(Entity::from_bits(noise_id), octaves, persistence));
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_noise_frequency(noise_id: u64, freq: f32) {
+    error::clear_error();
+    error::check(|| noise_frequency(Entity::from_bits(noise_id), freq));
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_noise_lacunarity(noise_id: u64, lac: f32) {
+    error::clear_error();
+    error::check(|| noise_lacunarity(Entity::from_bits(noise_id), lac));
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_noise_distance(noise_id: u64, dist: u8) {
+    error::clear_error();
+    error::check(|| noise_distance(Entity::from_bits(noise_id), dist.into()));
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_noise_worley(noise_id: u64, mode: u8) {
+    error::clear_error();
+    error::check(|| noise_worley(Entity::from_bits(noise_id), mode.into()));
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_noise_sample_1d(noise_id: u64, x: f32) -> f32 {
+    error::clear_error();
+    error::check(|| noise_sample_1d(Entity::from_bits(noise_id), x)).unwrap_or(0.0)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_noise_sample(noise_id: u64, x: f32, y: f32) -> f32 {
+    error::clear_error();
+    error::check(|| noise_sample(Entity::from_bits(noise_id), x, y)).unwrap_or(0.0)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_noise_sample_3d(noise_id: u64, x: f32, y: f32, z: f32) -> f32 {
+    error::clear_error();
+    error::check(|| noise_sample_3d(Entity::from_bits(noise_id), x, y, z)).unwrap_or(0.0)
+}

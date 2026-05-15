@@ -23,6 +23,7 @@ notosans = "0.1"
 raw-window-handle = "0.6"
 half = "2.7"
 crossbeam-channel = "0.5"
+noiz = { workspace = true }
 processing_core = { workspace = true }
 
 [build-dependencies]

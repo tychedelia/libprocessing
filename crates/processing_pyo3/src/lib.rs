@@ -20,6 +20,7 @@ pub(crate) mod material;
 pub(crate) mod math;
 mod midi;
 mod monitor;
+mod noise;
 pub(crate) mod particles;
 pub(crate) mod shader;
 mod surface;
@@ -371,6 +372,8 @@ mod mewnala {
     #[pymodule_export]
     use super::monitor::Monitor;
     #[pymodule_export]
+    use super::noise::Noise;
+    #[pymodule_export]
     use super::particles::Attribute;
     #[pymodule_export]
     use super::particles::AttributeFormat;
@@ -626,6 +629,32 @@ mod mewnala {
     const LCH: u8 = 8;
     #[pymodule_export]
     const XYZ: u8 = 9;
+
+    // Noise kinds
+    #[pymodule_export]
+    const PERLIN: u8 = 0;
+    #[pymodule_export]
+    const SIMPLEX: u8 = 1;
+    #[pymodule_export]
+    const VALUE: u8 = 2;
+    #[pymodule_export]
+    const WORLEY: u8 = 3;
+
+    // Noise distance metrics
+    #[pymodule_export]
+    const EUCLIDEAN: u8 = 0;
+    #[pymodule_export]
+    const MANHATTAN: u8 = 1;
+    #[pymodule_export]
+    const CHEBYSHEV: u8 = 2;
+
+    // Worley modes
+    #[pymodule_export]
+    const NEAREST: u8 = 0;
+    #[pymodule_export]
+    const SECOND_NEAREST: u8 = 1;
+    #[pymodule_export]
+    const DIFFERENCE: u8 = 2;
 
     #[pymodule_init]
     fn init(module: &Bound<'_, PyModule>) -> PyResult<()> {

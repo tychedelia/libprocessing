@@ -41,6 +41,7 @@ processing_glfw = { path = "crates/processing_glfw" }
 processing_webcam = { path = "crates/processing_webcam" }
 rand = "0.10"
 rand_distr = "0.6"
+noiz = { git = "https://github.com/processing/noiz", branch = "main" }
 
 [dependencies]
 bevy = { workspace = true }
@@ -216,6 +217,10 @@ path = "examples/text.rs"
 [[example]]
 name = "text_3d"
 path = "examples/text_3d.rs"
+
+[[example]]
+name = "noise"
+path = "examples/noise.rs"
 
 [profile.wasm-release]
 inherits = "release"

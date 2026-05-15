@@ -4029,9 +4029,9 @@ dependencies = [
 
 [[package]]
 name = "kqueue-sys"
-version = "1.1.1"
+version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "285efcf12ef41bec907b3000d5ffaeb54191d4d9d83c0d6157e6cbc2db255e64"
+checksum = "07293a4e297ac234359b510362495713f75ea345d5307140414f20c69ffeb087"
 dependencies = [
  "bitflags 2.11.1",
  "libc",
@@ -4675,10 +4675,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "noiz"
+version = "0.4.0"
+source = "git+https://github.com/processing/noiz?branch=main#4ef5bfcbb7039f80105540b64e065e332e1c10d6"
+dependencies = [
+ "bevy_math",
+ "bevy_reflect",
+ "serde",
+]
+
+[[package]]
 name = "nokhwa"
-version = "0.10.10"
+version = "0.10.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4cae50786bfa1214ed441f98addbea51ca1b9aaa9e4bf5369cda36654b3efaa"
+checksum = "9d63f10b450319a0ace7aa8e0e25477d1fdb345313a97e220e886175539a1dbb"
 dependencies = [
  "flume",
  "image",
@@ -4692,19 +4702,20 @@ dependencies = [
 
 [[package]]
 name = "nokhwa-bindings-linux"
-version = "0.1.3"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4bd666aaa41d14357817bd9a981773a73c4d00b34d344cfc244e47ebd397b1ec"
+checksum = "bb67e22201a53322291740ca064b20eaaade7222ef0349f312d9b37b004e1984"
 dependencies = [
+ "libc",
  "nokhwa-core",
  "v4l",
 ]
 
 [[package]]
 name = "nokhwa-bindings-macos"
-version = "0.2.3"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de78eb4a2d47a68f490899aa0516070d7a972f853ec2bb374ab53be0bd39b60f"
+checksum = "f70d3908ea68324e44a6b3a0f885aa59e433fb1f6678839d09e0df7d226fb42d"
 dependencies = [
  "block",
  "cocoa-foundation",
@@ -4719,9 +4730,9 @@ dependencies = [
 
 [[package]]
 name = "nokhwa-bindings-windows"
-version = "0.4.5"
+version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "899799275c93ef69bbe8cb888cf6f8249abe751cbc50be5299105022aec14a1c"
+checksum = "5be28886bad8abcec3655c1f24b965b4cb596a72b23164c910c54439ce55d2a4"
 dependencies = [
  "nokhwa-core",
  "once_cell",
@@ -4730,9 +4741,9 @@ dependencies = [
 
 [[package]]
 name = "nokhwa-core"
-version = "0.1.8"
+version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "109975552bbd690894f613bce3d408222911e317197c72b2e8b9a1912dc261ae"
+checksum = "b1cba20bebd3bd9ae22f9273ade5bbe49da3e047c8512b53fbaf8b4b9c80d496"
 dependencies = [
  "bytes",
  "image",
@@ -5806,6 +5817,7 @@ dependencies = [
  "js-sys",
  "lyon",
  "naga",
+ "noiz",
  "notosans",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
@@ -5871,7 +5883,7 @@ checksum = "e0c5ccf5294c6ccd63a74f1565028353830a9c2f5eb0c682c355c471726a6e3f"
 [[package]]
 name = "pyo3"
 version = "0.28.3"
-source = "git+https://github.com/PyO3/pyo3?branch=main#7cc707dbc20c16a7113fe442c87b3faa148ce340"
+source = "git+https://github.com/PyO3/pyo3?branch=main#598a45406e049b3834b1879ba3ce7919f92acb7a"
 dependencies = [
  "inventory",
  "libc",
@@ -5885,7 +5897,7 @@ dependencies = [
 [[package]]
 name = "pyo3-build-config"
 version = "0.28.3"
-source = "git+https://github.com/PyO3/pyo3?branch=main#7cc707dbc20c16a7113fe442c87b3faa148ce340"
+source = "git+https://github.com/PyO3/pyo3?branch=main#598a45406e049b3834b1879ba3ce7919f92acb7a"
 dependencies = [
  "target-lexicon",
 ]
@@ -5893,7 +5905,7 @@ dependencies = [
 [[package]]
 name = "pyo3-ffi"
 version = "0.28.3"
-source = "git+https://github.com/PyO3/pyo3?branch=main#7cc707dbc20c16a7113fe442c87b3faa148ce340"
+source = "git+https://github.com/PyO3/pyo3?branch=main#598a45406e049b3834b1879ba3ce7919f92acb7a"
 dependencies = [
  "libc",
  "pyo3-build-config",
@@ -5902,7 +5914,7 @@ dependencies = [
 [[package]]
 name = "pyo3-introspection"
 version = "0.28.3"
-source = "git+https://github.com/PyO3/pyo3?branch=main#7cc707dbc20c16a7113fe442c87b3faa148ce340"
+source = "git+https://github.com/PyO3/pyo3?branch=main#598a45406e049b3834b1879ba3ce7919f92acb7a"
 dependencies = [
  "anyhow",
  "goblin",
@@ -5913,7 +5925,7 @@ dependencies = [
 [[package]]
 name = "pyo3-macros"
 version = "0.28.3"
-source = "git+https://github.com/PyO3/pyo3?branch=main#7cc707dbc20c16a7113fe442c87b3faa148ce340"
+source = "git+https://github.com/PyO3/pyo3?branch=main#598a45406e049b3834b1879ba3ce7919f92acb7a"
 dependencies = [
  "proc-macro2",
  "pyo3-macros-backend",
@@ -5924,7 +5936,7 @@ dependencies = [
 [[package]]
 name = "pyo3-macros-backend"
 version = "0.28.3"
-source = "git+https://github.com/PyO3/pyo3?branch=main#7cc707dbc20c16a7113fe442c87b3faa148ce340"
+source = "git+https://github.com/PyO3/pyo3?branch=main#598a45406e049b3834b1879ba3ce7919f92acb7a"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -6939,7 +6951,7 @@ dependencies = [
  "indexmap",
  "toml_datetime 1.1.1+spec-1.1.0",
  "toml_parser",
- "winnow 1.0.2",
+ "winnow 1.0.3",
 ]
 
 [[package]]
@@ -6948,7 +6960,7 @@ version = "1.1.2+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2abe9b86193656635d2411dc43050282ca48aa31c2451210f4202550afb7526"
 dependencies = [
- "winnow 1.0.2",
+ "winnow 1.0.3",
 ]
 
 [[package]]
@@ -8254,9 +8266,9 @@ checksum = "df79d97927682d2fd8adb29682d1140b343be4ac0f08fd68b7765d9c059d3945"
 
 [[package]]
 name = "winnow"
-version = "1.0.2"
+version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ee1708bef14716a11bae175f579062d4554d95be2c6829f518df847b7b3fdd0"
+checksum = "0592e1c9d151f854e6fd382574c3a0855250e1d9b2f99d9281c6e6391af352f1"
 dependencies = [
  "memchr",
 ]

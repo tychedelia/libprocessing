@@ -10,6 +10,7 @@ pub mod image;
 pub mod light;
 pub mod material;
 pub mod monitor;
+pub mod noise;
 pub mod particles;
 pub mod render;
 pub mod shader_value;
@@ -2689,4 +2690,52 @@ pub fn graphics_text_glyph_rects(
             &text_cx,
         ))
     })
+}
+
+pub fn noise_create() -> error::Result<Entity> {
+    app_mut(|app| Ok(noise::create(app.world_mut())))
+}
+
+pub fn noise_destroy(entity: Entity) -> error::Result<()> {
+    app_mut(|app| noise::destroy(app.world_mut(), entity))
+}
+
+pub fn noise_mode(entity: Entity, kind: noise::NoiseKind) -> error::Result<()> {
+    app_mut(|app| noise::set_mode(app.world_mut(), entity, kind))
+}
+
+pub fn noise_seed(entity: Entity, seed: u32) -> error::Result<()> {
+    app_mut(|app| noise::set_seed(app.world_mut(), entity, seed))
+}
+
+pub fn noise_detail(entity: Entity, octaves: u32, persistence: f32) -> error::Result<()> {
+    app_mut(|app| noise::set_detail(app.world_mut(), entity, octaves, persistence))
+}
+
+pub fn noise_frequency(entity: Entity, freq: f32) -> error::Result<()> {
+    app_mut(|app| noise::set_frequency(app.world_mut(), entity, freq))
+}
+
+pub fn noise_lacunarity(entity: Entity, lac: f32) -> error::Result<()> {
+    app_mut(|app| noise::set_lacunarity(app.world_mut(), entity, lac))
+}
+
+pub fn noise_distance(entity: Entity, dist: noise::NoiseDistance) -> error::Result<()> {
+    app_mut(|app| noise::set_distance(app.world_mut(), entity, dist))
+}
+
+pub fn noise_worley(entity: Entity, mode: noise::WorleyMode) -> error::Result<()> {
+    app_mut(|app| noise::set_worley_mode(app.world_mut(), entity, mode))
+}
+
+pub fn noise_sample_1d(entity: Entity, x: f32) -> error::Result<f32> {
+    app_mut(|app| noise::sample_1d(app.world(), entity, x))
+}
+
+pub fn noise_sample(entity: Entity, x: f32, y: f32) -> error::Result<f32> {
+    app_mut(|app| noise::sample_2d(app.world(), entity, x, y))
+}
+
+pub fn noise_sample_3d(entity: Entity, x: f32, y: f32, z: f32) -> error::Result<f32> {
+    app_mut(|app| noise::sample_3d(app.world(), entity, x, y, z))
 }
