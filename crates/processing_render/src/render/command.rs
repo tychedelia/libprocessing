@@ -511,7 +511,7 @@ pub enum DrawCommand {
     PushMatrix,
     PopMatrix,
     ResetMatrix,
-    Translate(Vec2),
+    Translate(Vec3),
     Rotate {
         angle: f32,
     },
@@ -524,7 +524,7 @@ pub enum DrawCommand {
     RotateZ {
         angle: f32,
     },
-    Scale(Vec2),
+    Scale(Vec3),
     ShearX {
         angle: f32,
     },

@@ -466,11 +466,11 @@ pub extern "C" fn processing_reset_matrix(graphics_id: u64) {
 /// - graphics_id is a valid ID returned from graphics_create.
 /// - This is called from the same thread as init.
 #[unsafe(no_mangle)]
-pub extern "C" fn processing_translate(graphics_id: u64, x: f32, y: f32) {
+pub extern "C" fn processing_translate(graphics_id: u64, x: f32, y: f32, z: f32) {
     error::clear_error();
     let graphics_entity = Entity::from_bits(graphics_id);
     error::check(|| {
-        graphics_record_command(graphics_entity, DrawCommand::Translate(Vec2::new(x, y)))
+        graphics_record_command(graphics_entity, DrawCommand::Translate(Vec3::new(x, y, z)))
     });
 }
 
@@ -486,16 +486,52 @@ pub extern "C" fn processing_rotate(graphics_id: u64, angle: f32) {
     error::check(|| graphics_record_command(graphics_entity, DrawCommand::Rotate { angle }));
 }
 
+/// Rotate the coordinate system about the X axis.
+///
+/// SAFETY:
+/// - graphics_id is a valid ID returned from graphics_create.
+/// - This is called from the same thread as init.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_rotate_x(graphics_id: u64, angle: f32) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| graphics_record_command(graphics_entity, DrawCommand::RotateX { angle }));
+}
+
+/// Rotate the coordinate system about the Y axis.
+///
+/// SAFETY:
+/// - graphics_id is a valid ID returned from graphics_create.
+/// - This is called from the same thread as init.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_rotate_y(graphics_id: u64, angle: f32) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| graphics_record_command(graphics_entity, DrawCommand::RotateY { angle }));
+}
+
+/// Rotate the coordinate system about the Z axis.
+///
+/// SAFETY:
+/// - graphics_id is a valid ID returned from graphics_create.
+/// - This is called from the same thread as init.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_rotate_z(graphics_id: u64, angle: f32) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| graphics_record_command(graphics_entity, DrawCommand::RotateZ { angle }));
+}
+
 /// Scale the coordinate system.
 ///
 /// SAFETY:
 /// - graphics_id is a valid ID returned from graphics_create.
 /// - This is called from the same thread as init.
 #[unsafe(no_mangle)]
-pub extern "C" fn processing_scale(graphics_id: u64, x: f32, y: f32) {
+pub extern "C" fn processing_scale(graphics_id: u64, x: f32, y: f32, z: f32) {
     error::clear_error();
     let graphics_entity = Entity::from_bits(graphics_id);
-    error::check(|| graphics_record_command(graphics_entity, DrawCommand::Scale(Vec2::new(x, y))));
+    error::check(|| graphics_record_command(graphics_entity, DrawCommand::Scale(Vec3::new(x, y, z))));
 }
 
 /// Shear along the X axis.
