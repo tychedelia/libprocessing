@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
-use bevy::prelude::*;
 use bevy::mesh::{Indices, VertexAttributeValues};
+use bevy::prelude::*;
 use lyon::{
     geom::Point,
     path::Path,
@@ -19,12 +19,13 @@ use parley::{
     },
 };
 use skrifa::{
+    FontRef, MetadataProvider,
     instance::{LocationRef, NormalizedCoord, Size},
     outline::{DrawSettings, OutlinePen},
-    FontRef, MetadataProvider,
 };
 
 use crate::render::{
+    RenderState,
     command::{TextAlignH, TextAlignV, TextStyle, TextWrapMode},
     mesh_builder::MeshBuilder,
 };
@@ -35,8 +36,20 @@ use crate::text::font::{DEFAULT_FONT_FAMILY, TextContext};
 pub enum PathCommand {
     MoveTo(f32, f32),
     LineTo(f32, f32),
-    QuadTo { cx: f32, cy: f32, x: f32, y: f32 },
-    CubicTo { cx1: f32, cy1: f32, cx2: f32, cy2: f32, x: f32, y: f32 },
+    QuadTo {
+        cx: f32,
+        cy: f32,
+        x: f32,
+        y: f32,
+    },
+    CubicTo {
+        cx1: f32,
+        cy1: f32,
+        cx2: f32,
+        cy2: f32,
+        x: f32,
+        y: f32,
+    },
     Close,
 }
 
@@ -57,8 +70,74 @@ pub struct TextParams<'a> {
     pub glyph_colors: Option<&'a [Color]>,
 }
 
+/// Owned [`TextParams`]: a `RenderState` snapshot that outlives the borrow.
+pub struct OwnedTextParams {
+    pub text_size: f32,
+    pub align_h: TextAlignH,
+    pub align_v: TextAlignV,
+    pub leading: Option<f32>,
+    pub max_w: Option<f32>,
+    pub max_h: Option<f32>,
+    pub wrap: TextWrapMode,
+    pub font_family: Option<String>,
+    pub text_style: TextStyle,
+    pub text_weight: Option<f32>,
+    pub text_variations: Vec<([u8; 4], f32)>,
+    pub text_features: Vec<([u8; 4], u16)>,
+    pub glyph_colors: Option<Vec<Color>>,
+}
+
+impl OwnedTextParams {
+    /// Snapshot a `RenderState`'s text state. `glyph_colors` is left unset; the
+    /// draw path fills it in, measurement queries don't need it.
+    pub fn from_render_state(state: &RenderState, max_w: Option<f32>, max_h: Option<f32>) -> Self {
+        Self {
+            text_size: state.style.text_size,
+            align_h: state.style.text_align_h,
+            align_v: state.style.text_align_v,
+            leading: state.style.text_leading,
+            max_w,
+            max_h,
+            wrap: state.style.text_wrap,
+            font_family: state.style.text_font_family.clone(),
+            text_style: state.style.text_style,
+            text_weight: state.style.text_weight,
+            text_variations: state.style.text_variations.clone(),
+            text_features: state.style.text_features.clone(),
+            glyph_colors: None,
+        }
+    }
+
+    /// Borrow as a [`TextParams`].
+    pub fn as_params(&self) -> TextParams<'_> {
+        TextParams {
+            text_size: self.text_size,
+            align_h: self.align_h,
+            align_v: self.align_v,
+            leading: self.leading,
+            max_w: self.max_w,
+            max_h: self.max_h,
+            wrap: self.wrap,
+            font_family: self.font_family.as_deref(),
+            text_style: self.text_style,
+            text_weight: self.text_weight,
+            text_variations: &self.text_variations,
+            text_features: &self.text_features,
+            glyph_colors: self.glyph_colors.as_deref(),
+        }
+    }
+}
+
 /// Tessellate text into a mesh (fill).
-pub fn text(mesh: &mut Mesh, content: &str, x: f32, y: f32, color: Color, params: &TextParams, text_cx: &TextContext) {
+pub fn text(
+    mesh: &mut Mesh,
+    content: &str,
+    x: f32,
+    y: f32,
+    color: Color,
+    params: &TextParams,
+    text_cx: &TextContext,
+) {
     if content.is_empty() {
         return;
     }
@@ -66,12 +145,28 @@ pub fn text(mesh: &mut Mesh, content: &str, x: f32, y: f32, color: Color, params
     text_cx.with(|font_cx, layout_cx| {
         let layout = build_layout(font_cx, layout_cx, content, color, params);
         let (base_x, base_y) = compute_text_origin(&layout, x, y, params.align_v);
-        tessellate_layout(mesh, &layout, base_x, base_y, params.max_h, params.glyph_colors);
+        tessellate_layout(
+            mesh,
+            &layout,
+            base_x,
+            base_y,
+            params.max_h,
+            params.glyph_colors,
+        );
     });
 }
 
 /// Tessellate text outlines as strokes into a mesh.
-pub fn text_stroke(mesh: &mut Mesh, content: &str, x: f32, y: f32, color: Color, stroke_weight: f32, params: &TextParams, text_cx: &TextContext) {
+pub fn text_stroke(
+    mesh: &mut Mesh,
+    content: &str,
+    x: f32,
+    y: f32,
+    color: Color,
+    stroke_weight: f32,
+    params: &TextParams,
+    text_cx: &TextContext,
+) {
     if content.is_empty() {
         return;
     }
@@ -79,11 +174,19 @@ pub fn text_stroke(mesh: &mut Mesh, content: &str, x: f32, y: f32, color: Color,
     text_cx.with(|font_cx, layout_cx| {
         let layout = build_layout(font_cx, layout_cx, content, color, params);
         let (base_x, base_y) = compute_text_origin(&layout, x, y, params.align_v);
-        stroke_layout(mesh, &layout, base_x, base_y, color, stroke_weight, params.max_h);
+        stroke_layout(
+            mesh,
+            &layout,
+            base_x,
+            base_y,
+            color,
+            stroke_weight,
+            params.max_h,
+        );
     });
 }
 
-/// Measure the width of text without rendering.
+/// Measure the width of text.
 pub fn text_width(content: &str, params: &TextParams, text_cx: &TextContext) -> f32 {
     if content.is_empty() {
         return 0.0;
@@ -102,7 +205,7 @@ pub fn text_width(content: &str, params: &TextParams, text_cx: &TextContext) -> 
     })
 }
 
-/// Get font ascent for the current text size.
+/// Font ascent for the current text size.
 pub fn text_ascent(params: &TextParams, text_cx: &TextContext) -> f32 {
     text_cx.with(|font_cx, layout_cx| {
         let layout = build_layout(font_cx, layout_cx, "X", Color::BLACK, params);
@@ -113,7 +216,7 @@ pub fn text_ascent(params: &TextParams, text_cx: &TextContext) -> f32 {
     })
 }
 
-/// Get font descent for the current text size.
+/// Font descent for the current text size.
 pub fn text_descent(params: &TextParams, text_cx: &TextContext) -> f32 {
     text_cx.with(|font_cx, layout_cx| {
         let layout = build_layout(font_cx, layout_cx, "X", Color::BLACK, params);
@@ -124,9 +227,14 @@ pub fn text_descent(params: &TextParams, text_cx: &TextContext) -> f32 {
     })
 }
 
-/// Compute the bounding box of text without rendering.
-/// Returns [x, y, width, height].
-pub fn text_bounds(content: &str, x: f32, y: f32, params: &TextParams, text_cx: &TextContext) -> [f32; 4] {
+/// Bounding box of text as `[x, y, width, height]`.
+pub fn text_bounds(
+    content: &str,
+    x: f32,
+    y: f32,
+    params: &TextParams,
+    text_cx: &TextContext,
+) -> [f32; 4] {
     if content.is_empty() {
         return [x, y, 0.0, 0.0];
     }
@@ -134,47 +242,34 @@ pub fn text_bounds(content: &str, x: f32, y: f32, params: &TextParams, text_cx: 
     text_cx.with(|font_cx, layout_cx| {
         let layout = build_layout(font_cx, layout_cx, content, Color::BLACK, params);
 
+        // the text origin is the layout's top-left corner
+        let (box_x, box_y) = compute_text_origin(&layout, x, y, params.align_v);
         let width = layout.width();
-        let total_height = layout.height();
-        let ascent = layout
-            .get(0)
-            .map(|line| line.metrics().ascent)
-            .unwrap_or(0.0);
-
         let height = match params.max_h {
-            Some(h) => total_height.min(h),
-            None => total_height,
+            Some(h) => layout.height().min(h),
+            None => layout.height(),
         };
 
-        // matches text()
-        let by = match params.align_v {
-            TextAlignV::Baseline => y - ascent,
-            TextAlignV::Top => y,
-            TextAlignV::Center => y - total_height / 2.0,
-            TextAlignV::Bottom => y - total_height,
-        };
-
-        [x, by, width, height]
+        [box_x, box_y, width, height]
     })
 }
 
-/// A line info entry from layout introspection.
+/// A single laid-out line.
 #[derive(Debug, Clone)]
 pub struct TextLineInfo {
-    /// The text content of this line.
     pub text: String,
-    /// Bounding rect: [x, y, width, height].
+    /// `[x, y, width, height]`.
     pub rect: [f32; 4],
 }
 
-/// A glyph info entry from layout introspection.
+/// A single laid-out glyph.
 #[derive(Debug, Clone)]
 pub struct TextGlyphInfo {
-    /// Bounding rect: [x, y, width, height].
+    /// `[x, y, width, height]`.
     pub rect: [f32; 4],
 }
 
-/// Get the number of lines after layout.
+/// Number of lines after layout.
 pub fn text_line_count(content: &str, params: &TextParams, text_cx: &TextContext) -> usize {
     if content.is_empty() {
         return 0;
@@ -185,7 +280,7 @@ pub fn text_line_count(content: &str, params: &TextParams, text_cx: &TextContext
     })
 }
 
-/// Get per-line info (text content and bounding rect) after layout.
+/// Per-line text and bounding rects.
 pub fn text_lines(
     content: &str,
     x: f32,
@@ -207,10 +302,10 @@ pub fn text_lines(
             };
             let metrics = line.metrics();
 
-            if let Some(h) = params.max_h {
-                if metrics.baseline + metrics.descent > h {
-                    break;
-                }
+            if let Some(h) = params.max_h
+                && metrics.baseline + metrics.descent > h
+            {
+                break;
             }
 
             let line_y = base_y + metrics.baseline - metrics.ascent;
@@ -218,14 +313,19 @@ pub fn text_lines(
 
             result.push(TextLineInfo {
                 text: line_text.to_string(),
-                rect: [base_x, line_y, metrics.advance, metrics.ascent + metrics.descent],
+                rect: [
+                    base_x,
+                    line_y,
+                    metrics.advance,
+                    metrics.ascent + metrics.descent,
+                ],
             });
         }
         result
     })
 }
 
-/// Get per-glyph bounding rects after layout.
+/// Per-glyph bounding rects.
 pub fn text_glyph_rects(
     content: &str,
     x: f32,
@@ -247,10 +347,10 @@ pub fn text_glyph_rects(
             };
             let metrics = line.metrics();
 
-            if let Some(h) = params.max_h {
-                if metrics.baseline + metrics.descent > h {
-                    break;
-                }
+            if let Some(h) = params.max_h
+                && metrics.baseline + metrics.descent > h
+            {
+                break;
             }
 
             for item in line.items() {
@@ -291,8 +391,11 @@ pub fn text_to_paths(
     })
 }
 
-/// Sample points along text outlines.
-/// `sample_factor` controls point density (default 0.1 — lower = more points).
+/// Default `sample_factor` for [`text_to_points`].
+pub const DEFAULT_SAMPLE_FACTOR: f32 = 0.1;
+
+/// Sample points along text outlines. Higher `sample_factor` = more points;
+/// see [`DEFAULT_SAMPLE_FACTOR`].
 pub fn text_to_points(
     content: &str,
     x: f32,
@@ -340,7 +443,12 @@ pub fn text_to_points(
                             points.push([px, py]);
                         }
                     }
-                    Event::Cubic { from, ctrl1, ctrl2, to } => {
+                    Event::Cubic {
+                        from,
+                        ctrl1,
+                        ctrl2,
+                        to,
+                    } => {
                         let steps = (30.0 * step).max(2.0) as usize;
                         for i in 1..=steps {
                             let t = i as f32 / steps as f32;
@@ -365,9 +473,8 @@ pub fn text_to_points(
     })
 }
 
-/// Generate a 3D extruded mesh from text outlines.
-/// Returns a Mesh with front face, back face, and side walls.
-/// Uses Y-up convention matching Bevy's 3D coordinate system.
+/// 3D extruded mesh from text outlines: front and back faces plus side walls,
+/// in Bevy's Y-up convention.
 pub fn text_to_model(
     content: &str,
     x: f32,
@@ -391,13 +498,13 @@ pub fn text_to_model(
         let mut fill_tess = FillTessellator::new();
 
         for path in &glyph_paths {
-            // front face
+            // front face: z = +half_depth, normal +Z
             {
                 let mut builder = Extrusion3DBuilder::new(&mut mesh, half_depth, [0.0, 0.0, 1.0]);
                 let _ = fill_tess.tessellate_path(path, &FillOptions::default(), &mut builder);
             }
 
-            // back face — winding reversed below
+            // back face: z = -half_depth, normal -Z, with winding reversed below
             let back_indices_start = mesh
                 .indices()
                 .map(|i| match i {
@@ -406,8 +513,7 @@ pub fn text_to_model(
                 })
                 .unwrap_or(0);
             {
-                let mut builder =
-                    Extrusion3DBuilder::new(&mut mesh, -half_depth, [0.0, 0.0, -1.0]);
+                let mut builder = Extrusion3DBuilder::new(&mut mesh, -half_depth, [0.0, 0.0, -1.0]);
                 let _ = fill_tess.tessellate_path(path, &FillOptions::default(), &mut builder);
             }
 
@@ -419,7 +525,7 @@ pub fn text_to_model(
                 }
             }
 
-            // side walls connect front to back along the outline
+            // side walls: connect each contour's front vertices to its back ones
             let mut contour_points: Vec<Point<f32>> = Vec::new();
 
             for event in path.iter() {
@@ -442,7 +548,12 @@ pub fn text_to_model(
                             contour_points.push(Point::new(px, py));
                         }
                     }
-                    Event::Cubic { from, ctrl1, ctrl2, to } => {
+                    Event::Cubic {
+                        from,
+                        ctrl1,
+                        ctrl2,
+                        to,
+                    } => {
                         let steps = 12;
                         for s in 1..=steps {
                             let t = s as f32 / steps as f32;
@@ -465,6 +576,7 @@ pub fn text_to_model(
                                 let p0 = contour_points[i];
                                 let p1 = contour_points[j];
 
+                                // outward normal of this edge
                                 let dx = p1.x - p0.x;
                                 let dy = p1.y - p0.y;
                                 let len = (dx * dx + dy * dy).sqrt().max(1e-6);
@@ -472,7 +584,7 @@ pub fn text_to_model(
                                 let ny = dx / len;
                                 let normal = [nx, ny, 0.0];
 
-                                // front-p0, front-p1, back-p1, back-p0
+                                // quad vertices: front-p0, front-p1, back-p1, back-p0
                                 let base = vertex_count(&mesh) as u32;
                                 push_vertex_3d(&mut mesh, [p0.x, p0.y, half_depth], normal);
                                 push_vertex_3d(&mut mesh, [p1.x, p1.y, half_depth], normal);
@@ -537,14 +649,12 @@ fn push_vertex_3d(mesh: &mut Mesh, position: [f32; 3], normal: [f32; 3]) {
     {
         colors.push([1.0, 1.0, 1.0, 1.0]);
     }
-    if let Some(VertexAttributeValues::Float32x2(uvs)) =
-        mesh.attribute_mut(Mesh::ATTRIBUTE_UV_0)
-    {
+    if let Some(VertexAttributeValues::Float32x2(uvs)) = mesh.attribute_mut(Mesh::ATTRIBUTE_UV_0) {
         uvs.push([0.0, 0.0]);
     }
 }
 
-/// Places lyon tessellation output at a given Z depth with a given normal.
+/// Places lyon fill output at a fixed Z depth and normal.
 struct Extrusion3DBuilder<'a> {
     mesh: &'a mut Mesh,
     z: f32,
@@ -586,25 +696,27 @@ impl<'a> FillGeometryBuilder for Extrusion3DBuilder<'a> {
     }
 }
 
+/// Absolute position of the layout's top-left corner — parley's glyph
+/// positions are measured against it. `y` is the first line's baseline for
+/// `Baseline` align, otherwise the top/center/bottom of the text block.
 fn compute_text_origin(layout: &Layout<Color>, x: f32, y: f32, align_v: TextAlignV) -> (f32, f32) {
     let total_height = layout.height();
-    let ascent = layout
+    let first_baseline = layout
         .get(0)
-        .map(|line| line.metrics().ascent)
+        .map(|line| line.metrics().baseline)
         .unwrap_or(0.0);
 
     let y_offset = match align_v {
-        TextAlignV::Baseline => y,
-        TextAlignV::Top => y + ascent,
-        TextAlignV::Center => y + ascent - total_height / 2.0,
-        TextAlignV::Bottom => y + ascent - total_height,
+        TextAlignV::Baseline => y - first_baseline,
+        TextAlignV::Top => y,
+        TextAlignV::Center => y - total_height / 2.0,
+        TextAlignV::Bottom => y - total_height,
     };
 
     (x, y_offset)
 }
 
-/// Extract text outlines as per-contour PathCommand vecs.
-/// Each contour (each MoveTo...Close sequence) is a separate vec.
+/// Extract text outlines, one `PathCommand` vec per contour.
 pub fn text_to_contours(
     content: &str,
     x: f32,
@@ -635,14 +747,25 @@ pub fn text_to_contours(
                     }
                     Event::Quadratic { from: _, ctrl, to } => {
                         current_contour.push(PathCommand::QuadTo {
-                            cx: ctrl.x, cy: ctrl.y, x: to.x, y: to.y,
+                            cx: ctrl.x,
+                            cy: ctrl.y,
+                            x: to.x,
+                            y: to.y,
                         });
                     }
-                    Event::Cubic { from: _, ctrl1, ctrl2, to } => {
+                    Event::Cubic {
+                        from: _,
+                        ctrl1,
+                        ctrl2,
+                        to,
+                    } => {
                         current_contour.push(PathCommand::CubicTo {
-                            cx1: ctrl1.x, cy1: ctrl1.y,
-                            cx2: ctrl2.x, cy2: ctrl2.y,
-                            x: to.x, y: to.y,
+                            cx1: ctrl1.x,
+                            cy1: ctrl1.y,
+                            cx2: ctrl2.x,
+                            cy2: ctrl2.y,
+                            x: to.x,
+                            y: to.y,
                         });
                     }
                     Event::End { close, .. } => {
@@ -682,18 +805,31 @@ fn extract_glyph_path_commands(
                     Event::Line { from: _, to } => cmds.push(PathCommand::LineTo(to.x, to.y)),
                     Event::Quadratic { from: _, ctrl, to } => {
                         cmds.push(PathCommand::QuadTo {
-                            cx: ctrl.x, cy: ctrl.y, x: to.x, y: to.y,
+                            cx: ctrl.x,
+                            cy: ctrl.y,
+                            x: to.x,
+                            y: to.y,
                         });
                     }
-                    Event::Cubic { from: _, ctrl1, ctrl2, to } => {
+                    Event::Cubic {
+                        from: _,
+                        ctrl1,
+                        ctrl2,
+                        to,
+                    } => {
                         cmds.push(PathCommand::CubicTo {
-                            cx1: ctrl1.x, cy1: ctrl1.y,
-                            cx2: ctrl2.x, cy2: ctrl2.y,
-                            x: to.x, y: to.y,
+                            cx1: ctrl1.x,
+                            cy1: ctrl1.y,
+                            cx2: ctrl2.x,
+                            cy2: ctrl2.y,
+                            x: to.x,
+                            y: to.y,
                         });
                     }
                     Event::End { close, .. } => {
-                        if close { cmds.push(PathCommand::Close); }
+                        if close {
+                            cmds.push(PathCommand::Close);
+                        }
                     }
                 }
             }
@@ -702,6 +838,7 @@ fn extract_glyph_path_commands(
         .collect()
 }
 
+/// Extract glyph outlines as lyon `Path`s, one per glyph.
 fn extract_glyph_lyon_paths(
     layout: &Layout<Color>,
     base_x: f32,
@@ -732,8 +869,7 @@ fn extract_glyph_lyon_paths(
             let font_size = run.font_size();
             let normalized_coords = run.normalized_coords();
 
-            let Ok(font_ref) = FontRef::from_index(font_data.data.as_ref(), font_data.index)
-            else {
+            let Ok(font_ref) = FontRef::from_index(font_data.data.as_ref(), font_data.index) else {
                 continue;
             };
 
@@ -790,7 +926,7 @@ fn build_layout(
         builder.push_default(StyleProperty::WordBreak(WordBreakStrength::BreakAll));
     }
 
-    // text_weight overrides bold from text_style
+    // text_weight overrides the bold implied by text_style
     if let Some(weight) = params.text_weight {
         builder.push_default(StyleProperty::FontWeight(ParleyFontWeight::new(weight)));
         if matches!(params.text_style, TextStyle::Italic | TextStyle::BoldItalic) {
@@ -835,9 +971,9 @@ fn build_layout(
                 value,
             })
             .collect();
-        builder.push_default(StyleProperty::FontFeatures(FontSettings::List(
-            Cow::Owned(feats),
-        )));
+        builder.push_default(StyleProperty::FontFeatures(FontSettings::List(Cow::Owned(
+            feats,
+        ))));
     }
 
     let mut layout = builder.build(content);
@@ -871,6 +1007,7 @@ fn tessellate_layout(
             continue;
         };
 
+        // stop once a line falls past max_h
         if let Some(h) = max_h {
             let metrics = line.metrics();
             if metrics.baseline + metrics.descent > h {
@@ -887,7 +1024,7 @@ fn tessellate_layout(
             let font_data = run.font();
             let font_size = run.font_size();
             let normalized_coords = run.normalized_coords();
-            let color = glyph_run.style().brush.clone();
+            let color = glyph_run.style().brush;
 
             let Ok(font_ref) = FontRef::from_index(font_data.data.as_ref(), font_data.index) else {
                 continue;
@@ -896,7 +1033,7 @@ fn tessellate_layout(
             let outlines = font_ref.outline_glyphs();
             let skrifa_size = Size::new(font_size);
 
-            // i16 -> F2Dot14
+            // parley's i16 normalized coords -> skrifa's F2Dot14 NormalizedCoord
             let coords: Vec<NormalizedCoord> = normalized_coords
                 .iter()
                 .map(|&c| NormalizedCoord::from_bits(c))
@@ -907,7 +1044,7 @@ fn tessellate_layout(
                 let glyph_color = glyph_colors
                     .filter(|colors| !colors.is_empty())
                     .map(|colors| colors[glyph_index % colors.len()])
-                    .unwrap_or(color.clone());
+                    .unwrap_or(color);
                 glyph_index += 1;
 
                 let glyph_id = skrifa::GlyphId::new(glyph.id);
@@ -918,13 +1055,13 @@ fn tessellate_layout(
                     let _ = outline_glyph.draw(settings, &mut pen);
 
                     if let Some(path) = pen.build() {
-                        // outline is Y-up, screen is Y-down; flip below
+                        // font outlines are Y-up; translate_path_flip_y flips to Y-down
                         let tx = base_x + glyph.x;
                         let ty = base_y + glyph.y;
 
                         let translated = translate_path_flip_y(&path, tx, ty);
 
-                        let mut builder = MeshBuilder::new(mesh, glyph_color.clone());
+                        let mut builder = MeshBuilder::new(mesh, glyph_color);
                         let _ = fill_tess.tessellate_path(
                             &translated,
                             &FillOptions::default(),
@@ -951,12 +1088,13 @@ fn stroke_layout(
 
     let glyph_paths = extract_glyph_lyon_paths(layout, base_x, base_y, max_h);
     for path in &glyph_paths {
-        let mut builder = MeshBuilder::new(mesh, color.clone());
+        let mut builder = MeshBuilder::new(mesh, color);
         let _ = stroke_tess.tessellate_path(path, &stroke_opts, &mut builder);
     }
 }
 
-// outline is Y-up, layout ty is Y-down: emit (x + tx, y - ty)
+/// Translate a lyon path keeping Y-up convention (for 3D geometry).
+/// Font outline Y is up; layout ty is Y-down, so we compute: (x + tx, y - ty).
 fn translate_path_yup(path: &Path, tx: f32, ty: f32) -> Path {
     let mut builder = Path::builder();
     for event in path.iter() {
@@ -998,7 +1136,7 @@ fn translate_path_yup(path: &Path, tx: f32, ty: f32) -> Path {
     builder.build()
 }
 
-// Y-up variant for 3D
+/// Extract glyph outlines as lyon Path objects in Y-up convention (for 3D).
 fn extract_glyph_lyon_paths_yup(
     layout: &Layout<Color>,
     base_x: f32,
@@ -1029,8 +1167,7 @@ fn extract_glyph_lyon_paths_yup(
             let font_size = run.font_size();
             let normalized_coords = run.normalized_coords();
 
-            let Ok(font_ref) = FontRef::from_index(font_data.data.as_ref(), font_data.index)
-            else {
+            let Ok(font_ref) = FontRef::from_index(font_data.data.as_ref(), font_data.index) else {
                 continue;
             };
 
@@ -1063,7 +1200,7 @@ fn extract_glyph_lyon_paths_yup(
     paths
 }
 
-// translate by (tx, ty), flipping outline Y-up to screen Y-down
+/// Translate a lyon path by (tx, ty) and flip Y coordinates (font Y-up to screen Y-down).
 fn translate_path_flip_y(path: &Path, tx: f32, ty: f32) -> Path {
     let mut builder = Path::builder();
     for event in path.iter() {
@@ -1105,7 +1242,7 @@ fn translate_path_flip_y(path: &Path, tx: f32, ty: f32) -> Path {
     builder.build()
 }
 
-// skrifa OutlinePen -> lyon Path
+/// An `OutlinePen` that builds a lyon `Path` from a skrifa glyph outline.
 struct LyonOutlinePen {
     builder: lyon::path::path::Builder,
     has_content: bool,
@@ -1144,11 +1281,8 @@ impl OutlinePen for LyonOutlinePen {
     }
 
     fn curve_to(&mut self, cx0: f32, cy0: f32, cx1: f32, cy1: f32, x: f32, y: f32) {
-        self.builder.cubic_bezier_to(
-            Point::new(cx0, cy0),
-            Point::new(cx1, cy1),
-            Point::new(x, y),
-        );
+        self.builder
+            .cubic_bezier_to(Point::new(cx0, cy0), Point::new(cx1, cy1), Point::new(x, y));
     }
 
     fn close(&mut self) {

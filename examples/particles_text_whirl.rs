@@ -283,8 +283,8 @@ fn sketch() -> error::Result<()> {
     transform_look_at(graphics, Vec3::ZERO)?;
     graphics_orbit_camera(graphics)?;
 
-    // graphics_text_to_model reads RenderState::text_size directly, so patch
-    // it synchronously instead of going through a queued DrawCommand.
+    // graphics_text_to_model reads RenderState style text_size directly, so
+    // patch it synchronously instead of going through a queued DrawCommand.
     const TEXT_PT: f32 = 700.0;
     const EXTRUSION: f32 = 70.0;
     processing_core::app_mut(|app| {
@@ -292,7 +292,7 @@ fn sketch() -> error::Result<()> {
             .world_mut()
             .get_mut::<processing_render::render::RenderState>(graphics)
             .ok_or(error::ProcessingError::GraphicsNotFound)?;
-        state.text_size = TEXT_PT;
+        state.style.text_size = TEXT_PT;
         Ok(())
     })?;
     graphics_record_command(graphics, DrawCommand::TextStyle(TextStyle::Bold))?;

@@ -32,6 +32,7 @@ use crate::{
     render::{
         BATCH_INDEX_STEP, RenderState,
         command::{CommandBuffer, DrawCommand},
+        filter,
     },
     surface::Surface,
 };
@@ -118,7 +119,8 @@ impl CameraProjection for ProcessingProjection {
     fn update(&mut self, _width: f32, _height: f32) {
         // this gets called with the render target's physical dimensions (i.e. accounting for
         // scale factor), but our projection is in logical pixel units
-        // TODO: handle resizes?
+        self.width = _width;
+        self.height = _height;
     }
 
     fn far(&self) -> f32 {
@@ -514,11 +516,55 @@ pub fn begin_draw(In(entity): In<Entity>, mut state_query: Query<&mut RenderStat
     Ok(())
 }
 
+pub fn get_matrix(In(entity): In<Entity>, states: Query<&RenderState>) -> Result<Mat4> {
+    let state = states
+        .get(entity)
+        .map_err(|_| ProcessingError::GraphicsNotFound)?;
+    Ok(Mat4::from(state.transform.current()))
+}
+
+pub fn model_point(
+    In((entity, point)): In<(Entity, Vec3)>,
+    states: Query<&RenderState>,
+) -> Result<Vec3> {
+    let state = states
+        .get(entity)
+        .map_err(|_| ProcessingError::GraphicsNotFound)?;
+    Ok(state.transform.transform_point(point))
+}
+
+pub fn screen_point(
+    In((entity, point)): In<(Entity, Vec3)>,
+    query: Query<(&RenderState, &Projection, &Transform, &SurfaceSize)>,
+) -> Result<Vec3> {
+    let (state, projection, camera_transform, size) = query
+        .get(entity)
+        .map_err(|_| ProcessingError::GraphicsNotFound)?;
+    let world = state.transform.transform_point(point);
+    let clip_from_view = projection.get_clip_from_view();
+    let view_from_world = camera_transform.to_matrix().inverse();
+    let clip = clip_from_view * view_from_world * world.extend(1.0);
+    if clip.w == 0.0 {
+        return Ok(Vec3::ZERO);
+    }
+    let ndc = clip.truncate() / clip.w;
+    let SurfaceSize(width, height) = *size;
+    Ok(Vec3::new(
+        (ndc.x + 1.0) * 0.5 * width as f32,
+        (1.0 - ndc.y) * 0.5 * height as f32,
+        ndc.z,
+    ))
+}
+
 pub fn flush(app: &mut App, entity: Entity) -> Result<()> {
     graphics_mut!(app, entity).insert(Flush);
     app.update();
     graphics_mut!(app, entity).remove::<Flush>();
     Ok(())
+}
+
+pub fn apply_filter(app: &mut App, graphics: Entity, filter: Entity) -> Result<()> {
+    filter::apply(app, graphics, filter)
 }
 
 pub fn present(app: &mut App, entity: Entity) -> Result<()> {

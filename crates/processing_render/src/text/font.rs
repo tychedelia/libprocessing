@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use bevy::prelude::*;
 use parley::{FontContext, LayoutContext};
 
-/// A font entity component storing the font's family name.
+/// Font component: the resolved family name.
 #[derive(Component)]
 pub struct Font {
     pub family_name: String,
@@ -24,7 +24,7 @@ impl TextContext {
     pub fn new() -> Self {
         let mut font_cx = FontContext::default();
 
-        // embedded default
+        // embedded NotoSans is the default font
         font_cx
             .collection
             .register_fonts(notosans::REGULAR_TTF.to_vec().into(), None);
@@ -37,8 +37,8 @@ impl TextContext {
         }
     }
 
-    /// Access the font and layout contexts together via a closure.
-    // split fields so the closure can borrow both mutably
+    /// Access both contexts at once; they're split so the closure can borrow
+    /// each mutably.
     pub fn with<R>(&self, f: impl FnOnce(&mut FontContext, &mut LayoutContext<Color>) -> R) -> R {
         let mut inner = self.inner.lock().unwrap();
         let TextContextInner {
@@ -48,14 +48,10 @@ impl TextContext {
         f(font_cx, layout_cx)
     }
 
-    /// Load a font file and register it with the font context.
-    /// Returns the primary family name of the loaded font, if available.
+    /// Register font bytes; returns the primary family name if one is found.
     pub fn load_font(&self, data: Vec<u8>) -> Option<String> {
         let mut inner = self.inner.lock().unwrap();
-        let families = inner
-            .font_cx
-            .collection
-            .register_fonts(data.into(), None);
+        let families = inner.font_cx.collection.register_fonts(data.into(), None);
         families.first().and_then(|(fam_id, _)| {
             inner
                 .font_cx
@@ -65,7 +61,7 @@ impl TextContext {
         })
     }
 
-    /// List all available font family names (system + registered).
+    /// All available family names, system and registered.
     pub fn list_fonts(&self) -> Vec<String> {
         let mut inner = self.inner.lock().unwrap();
         inner
@@ -76,7 +72,7 @@ impl TextContext {
             .collect()
     }
 
-    /// Check if a font family name is available.
+    /// Whether a family name is available.
     pub fn has_font(&self, name: &str) -> bool {
         let mut inner = self.inner.lock().unwrap();
         inner.font_cx.collection.family_id(name).is_some()
@@ -113,7 +109,7 @@ pub struct FontMetadata {
 }
 
 impl TextContext {
-    /// Query variable font axes for a given family name.
+    /// Variable font axes for a family.
     pub fn font_variations(&self, family: &str) -> Vec<FontAxisInfo> {
         let mut inner = self.inner.lock().unwrap();
         let family_info = match inner.font_cx.collection.family_by_name(family) {
@@ -141,15 +137,23 @@ impl TextContext {
             .collect()
     }
 
-    /// Query font metadata for a given family name.
+    /// Metadata for a family.
     pub fn font_metadata(&self, family: &str) -> Option<FontMetadata> {
+        use parley::FontStyle;
+
         let mut inner = self.inner.lock().unwrap();
         let family_info = inner.font_cx.collection.family_by_name(family)?;
         let font_info = family_info.default_font()?;
 
+        let style = match font_info.style() {
+            FontStyle::Normal => "normal".to_string(),
+            FontStyle::Italic => "italic".to_string(),
+            FontStyle::Oblique(_) => "oblique".to_string(),
+        };
+
         Some(FontMetadata {
             family: family_info.name().to_string(),
-            style: format!("{:?}", font_info.style()),
+            style,
             weight: font_info.weight().value(),
             width: font_info.width().ratio(),
             is_variable: !font_info.axes().is_empty(),

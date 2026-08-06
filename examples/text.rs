@@ -5,8 +5,16 @@ use processing::prelude::*;
 use processing_render::render::command::DrawCommand;
 
 fn main() {
-    sketch().unwrap();
-    exit(0).unwrap();
+    match sketch() {
+        Ok(_) => {
+            eprintln!("Sketch completed successfully");
+            exit(0).unwrap();
+        }
+        Err(e) => {
+            eprintln!("Sketch error: {:?}", e);
+            exit(1).unwrap();
+        }
+    };
 }
 
 fn sketch() -> error::Result<()> {
@@ -23,8 +31,8 @@ fn sketch() -> error::Result<()> {
 
         graphics_record_command(graphics, DrawCommand::BackgroundColor(Color::WHITE))?;
         graphics_record_command(graphics, DrawCommand::Fill(Color::BLACK))?;
-
         graphics_record_command(graphics, DrawCommand::TextSize(32.0))?;
+
         graphics_record_command(
             graphics,
             DrawCommand::Text {
@@ -38,6 +46,7 @@ fn sketch() -> error::Result<()> {
         )?;
 
         graphics_record_command(graphics, DrawCommand::TextSize(18.0))?;
+
         graphics_record_command(
             graphics,
             DrawCommand::Text {
@@ -51,6 +60,7 @@ fn sketch() -> error::Result<()> {
         )?;
 
         graphics_record_command(graphics, DrawCommand::TextSize(16.0))?;
+
         graphics_record_command(
             graphics,
             DrawCommand::Text {
@@ -71,6 +81,7 @@ fn sketch() -> error::Result<()> {
             },
         )?;
         graphics_record_command(graphics, DrawCommand::TextSize(24.0))?;
+
         graphics_record_command(
             graphics,
             DrawCommand::Text {

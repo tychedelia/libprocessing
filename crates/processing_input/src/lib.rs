@@ -8,7 +8,7 @@ use bevy::input::mouse::{
 };
 use bevy::input::touch::TouchPhase;
 use bevy::prelude::*;
-use bevy::window::CursorMoved;
+use bevy::window::{CursorMoved, WindowResized};
 
 use processing_core::app_mut;
 use processing_core::error;
@@ -177,6 +177,30 @@ pub fn input_cursor_visible(surface: Entity) -> error::Result<bool> {
     })
 }
 
+pub fn input_set_cursor_visible(surface: Entity, visible: bool) -> error::Result<()> {
+    app_mut(|app| {
+        if let Some(mut cursor) = app
+            .world_mut()
+            .get_mut::<bevy::window::CursorOptions>(surface)
+        {
+            cursor.visible = visible;
+        }
+        Ok(())
+    })
+}
+
+pub fn input_set_cursor_icon(
+    surface: Entity,
+    icon: bevy::window::SystemCursorIcon,
+) -> error::Result<()> {
+    app_mut(|app| {
+        if let Ok(mut entity) = app.world_mut().get_entity_mut(surface) {
+            entity.insert(bevy::window::CursorIcon::System(icon));
+        }
+        Ok(())
+    })
+}
+
 /// Flushes the input state by running the relevant schedules. This is required to ensure that
 /// Bevy's bookkeeping of input state is up to date after manually sending input events.
 /// It should be called after sending any input events and before querying input state
@@ -340,5 +364,16 @@ pub fn input_mouse_scrolled() -> error::Result<bool> {
     app_mut(|app| {
         let d = app.world().resource::<AccumulatedMouseScroll>().delta;
         Ok(d.x != 0.0 || d.y != 0.0)
+    })
+}
+
+pub fn input_window_resize(surface: Entity, width: f32, height: f32) -> error::Result<()> {
+    app_mut(|app| {
+        app.world_mut().write_message(WindowResized {
+            window: surface,
+            width,
+            height,
+        });
+        Ok(())
     })
 }

@@ -4,13 +4,13 @@ use crate::input;
 use crate::math::{extract_vec2, extract_vec3, extract_vec4};
 use bevy::{
     color::{ColorToPacked, Srgba},
-    math::Vec4,
+    math::{Vec3, Vec4},
     prelude::Entity,
     render::render_resource::{Extent3d, TextureFormat},
 };
 use processing::prelude::*;
 use pyo3::{
-    exceptions::PyRuntimeError,
+    exceptions::{PyRuntimeError, PyValueError},
     prelude::*,
     types::{PyDict, PyTuple},
 };
@@ -136,8 +136,8 @@ impl PyBlendMode {
 ///
 /// Controls texture filtering and edge wrapping behavior.
 ///
-/// - `filter` — `Sampler.LINEAR` (smooth) or `Sampler.NEAREST` (pixelated).
-/// - `wrap` — `Sampler.CLAMP` (default), `Sampler.REPEAT`, or `Sampler.MIRROR`.
+/// - `filter` — `LINEAR` (smooth, default) or `NEAREST` (pixelated).
+/// - `wrap` — `CLAMP` (default), `REPEAT`, or `MIRROR`.
 ///   Use `wrap_x`/`wrap_y` to set each axis independently.
 #[pyclass(from_py_object)]
 #[derive(Clone)]
@@ -147,49 +147,78 @@ pub struct Sampler {
     pub(crate) wrap_y: u8,
 }
 
-#[pymethods]
 impl Sampler {
-    #[new]
-    #[pyo3(signature = (*, filter=0, wrap=0, wrap_x=None, wrap_y=None))]
-    fn new(filter: u8, wrap: u8, wrap_x: Option<u8>, wrap_y: Option<u8>) -> Self {
-        Self {
-            filter,
-            wrap_x: wrap_x.unwrap_or(wrap),
-            wrap_y: wrap_y.unwrap_or(wrap),
+    fn parse_filter(s: &str) -> PyResult<u8> {
+        match () {
+            _ if s.eq_ignore_ascii_case(constants::LINEAR) => Ok(0),
+            _ if s.eq_ignore_ascii_case(constants::NEAREST) => Ok(1),
+            _ => Err(PyValueError::new_err(format!(
+                "unknown filter: {s:?} (expected {:?} or {:?})",
+                constants::LINEAR,
+                constants::NEAREST
+            ))),
         }
     }
 
-    fn __repr__(&self) -> String {
-        let filter_name = match self.filter {
-            0 => "LINEAR",
-            1 => "NEAREST",
-            _ => "?",
-        };
-        let wrap_name = |v: u8| match v {
-            0 => "CLAMP",
-            1 => "REPEAT",
-            2 => "MIRROR",
-            _ => "?",
-        };
-        format!(
-            "Sampler(filter={}, wrap_x={}, wrap_y={})",
-            filter_name,
-            wrap_name(self.wrap_x),
-            wrap_name(self.wrap_y)
-        )
+    fn parse_wrap(s: &str) -> PyResult<u8> {
+        match () {
+            _ if s.eq_ignore_ascii_case(constants::CLAMP) => Ok(0),
+            _ if s.eq_ignore_ascii_case(constants::REPEAT) => Ok(1),
+            _ if s.eq_ignore_ascii_case(constants::MIRROR) => Ok(2),
+            _ => Err(PyValueError::new_err(format!(
+                "unknown wrap: {s:?} (expected {:?}, {:?}, or {:?})",
+                constants::CLAMP,
+                constants::REPEAT,
+                constants::MIRROR
+            ))),
+        }
     }
 
-    #[classattr]
-    const LINEAR: u8 = 0;
-    #[classattr]
-    const NEAREST: u8 = 1;
+    fn filter_name(filter: u8) -> &'static str {
+        match filter {
+            0 => constants::LINEAR,
+            1 => constants::NEAREST,
+            _ => "?",
+        }
+    }
 
-    #[classattr]
-    const CLAMP: u8 = 0;
-    #[classattr]
-    const REPEAT: u8 = 1;
-    #[classattr]
-    const MIRROR: u8 = 2;
+    fn wrap_name(wrap: u8) -> &'static str {
+        match wrap {
+            0 => constants::CLAMP,
+            1 => constants::REPEAT,
+            2 => constants::MIRROR,
+            _ => "?",
+        }
+    }
+}
+
+#[pymethods]
+impl Sampler {
+    #[new]
+    #[pyo3(signature = (*, filter=constants::LINEAR, wrap=constants::CLAMP, wrap_x=None, wrap_y=None))]
+    fn new(filter: &str, wrap: &str, wrap_x: Option<&str>, wrap_y: Option<&str>) -> PyResult<Self> {
+        let wrap_default = Self::parse_wrap(wrap)?;
+        Ok(Self {
+            filter: Self::parse_filter(filter)?,
+            wrap_x: wrap_x
+                .map(Self::parse_wrap)
+                .transpose()?
+                .unwrap_or(wrap_default),
+            wrap_y: wrap_y
+                .map(Self::parse_wrap)
+                .transpose()?
+                .unwrap_or(wrap_default),
+        })
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "Sampler(filter={:?}, wrap_x={:?}, wrap_y={:?})",
+            Self::filter_name(self.filter),
+            Self::wrap_name(self.wrap_x),
+            Self::wrap_name(self.wrap_y)
+        )
+    }
 }
 
 pub use crate::surface::Surface;
@@ -230,7 +259,9 @@ pub struct Font {
 
 #[pymethods]
 impl Font {
-    /// Variable font axes as `(tag, min, max, default)`.
+    /// Query variable font axes.
+    ///
+    /// Returns a list of `(tag, min, max, default)` tuples.
     pub fn variations(&self) -> PyResult<Vec<(String, f32, f32, f32)>> {
         font_variations(self.entity)
             .map(|axes| {
@@ -241,12 +272,52 @@ impl Font {
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    /// `(family, style, weight, width, is_variable)`.
+    /// Query font metadata.
+    ///
+    /// Returns a `(family, style, weight, width, is_variable)` tuple.
     pub fn metadata(&self) -> PyResult<(String, String, f32, f32, bool)> {
         font_metadata(self.entity)
             .map(|m| (m.family, m.style, m.weight, m.width, m.is_variable))
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
+}
+
+/// Convert glyph outline groups into per-group lists of Python command tuples.
+fn path_commands_to_py(
+    py: Python<'_>,
+    groups: Vec<Vec<processing_render::render::primitive::text::PathCommand>>,
+) -> Vec<Vec<Py<PyAny>>> {
+    use processing_render::render::primitive::text::PathCommand;
+
+    let to_py = |cmd: PathCommand| -> Py<PyAny> {
+        match cmd {
+            PathCommand::MoveTo(x, y) => ("M", x, y).into_pyobject(py).unwrap().into_any().unbind(),
+            PathCommand::LineTo(x, y) => ("L", x, y).into_pyobject(py).unwrap().into_any().unbind(),
+            PathCommand::QuadTo { cx, cy, x, y } => ("Q", cx, cy, x, y)
+                .into_pyobject(py)
+                .unwrap()
+                .into_any()
+                .unbind(),
+            PathCommand::CubicTo {
+                cx1,
+                cy1,
+                cx2,
+                cy2,
+                x,
+                y,
+            } => ("C", cx1, cy1, cx2, cy2, x, y)
+                .into_pyobject(py)
+                .unwrap()
+                .into_any()
+                .unbind(),
+            PathCommand::Close => ("Z",).into_pyobject(py).unwrap().into_any().unbind(),
+        }
+    };
+
+    groups
+        .into_iter()
+        .map(|group| group.into_iter().map(to_py).collect())
+        .collect()
 }
 
 #[pyclass]
@@ -283,7 +354,7 @@ impl Image {
     /// Applies a `Sampler` to this image, controlling filtering and wrapping.
     ///
     /// ```python
-    /// s = Sampler(filter=Sampler.NEAREST, wrap=Sampler.REPEAT)
+    /// s = Sampler(filter=NEAREST, wrap=REPEAT)
     /// img.sampler(s)
     /// ```
     fn sampler(&self, sampler: &Sampler) -> PyResult<()> {
@@ -318,27 +389,6 @@ pub struct Geometry {
 }
 
 #[pyclass]
-pub enum Topology {
-    PointList = 0,
-    LineList = 1,
-    LineStrip = 2,
-    TriangleList = 3,
-    TriangleStrip = 4,
-}
-
-impl Topology {
-    pub fn as_u8(&self) -> u8 {
-        match self {
-            Self::PointList => 0,
-            Self::LineList => 1,
-            Self::LineStrip => 2,
-            Self::TriangleList => 3,
-            Self::TriangleStrip => 4,
-        }
-    }
-}
-
-#[pyclass]
 pub struct Sketch {
     pub source: String,
 }
@@ -348,11 +398,14 @@ impl Geometry {
     #[new]
     #[pyo3(signature = (**kwargs))]
     pub fn new(kwargs: Option<&Bound<'_, PyDict>>) -> PyResult<Self> {
-        let topology = kwargs
-            .and_then(|k| k.get_item("topology").ok().flatten())
-            .and_then(|t| t.cast_into::<Topology>().ok())
-            .and_then(|t| geometry::Topology::from_u8(t.borrow().as_u8()))
-            .unwrap_or(geometry::Topology::TriangleList);
+        let topology = match kwargs.and_then(|k| k.get_item("topology").ok().flatten()) {
+            Some(t) => {
+                let s = t.extract::<String>()?;
+                geometry::Topology::parse(&s)
+                    .ok_or_else(|| PyValueError::new_err(format!("unknown topology: {s:?}")))?
+            }
+            None => geometry::Topology::TriangleList,
+        };
 
         let geometry =
             geometry_create(topology).map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
@@ -412,9 +465,8 @@ impl Geometry {
         Ok(Self { entity })
     }
 
-    /// `nx * ny * nz` point lattice centered at the origin with `spacing`
-    /// units between adjacent points. `PointList` topology — intended as a
-    /// position source for `Particles(geometry=...)`.
+    /// lattice centered at the origin; topology is `POINTS`, intended as a
+    /// position source for `Particles(geometry=...)` rather than rasterized.
     #[staticmethod]
     #[pyo3(signature = (nx, ny, nz, spacing=1.0))]
     pub fn grid(nx: u32, ny: u32, nz: u32, spacing: f32) -> PyResult<Self> {
@@ -586,6 +638,18 @@ impl Graphics {
         }
     }
 
+    #[pyo3(signature = (kind, *args, **kwargs))]
+    pub fn filter(
+        &self,
+        kind: Bound<'_, PyAny>,
+        args: &Bound<'_, PyTuple>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<()> {
+        let filter = crate::filter::resolve_filter(&kind, args, kwargs)?;
+        graphics_apply_filter(self.entity, filter)
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    }
+
     #[pyo3(signature = (*args))]
     pub fn color(&self, args: &Bound<'_, PyTuple>) -> PyResult<crate::color::PyColor> {
         extract_color_with_mode(
@@ -610,6 +674,14 @@ impl Graphics {
     pub fn background_image(&self, image: &Image) -> PyResult<()> {
         graphics_record_command(self.entity, DrawCommand::BackgroundImage(image.entity))
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    }
+
+    pub fn clear(&self) -> PyResult<()> {
+        graphics_record_command(
+            self.entity,
+            DrawCommand::BackgroundColor(bevy::prelude::Color::NONE),
+        )
+        .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
     #[pyo3(signature = (*args))]
@@ -655,36 +727,32 @@ impl Graphics {
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    pub fn rect_mode(&self, mode: u8) -> PyResult<()> {
-        graphics_record_command(
-            self.entity,
-            DrawCommand::RectMode(processing::prelude::ShapeMode::from(mode)),
-        )
-        .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    pub fn rect_mode(&self, mode: &str) -> PyResult<()> {
+        let mode = ShapeMode::parse(mode)
+            .ok_or_else(|| PyValueError::new_err(format!("unknown rect mode: {mode:?}")))?;
+        graphics_record_command(self.entity, DrawCommand::RectMode(mode))
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    pub fn ellipse_mode(&self, mode: u8) -> PyResult<()> {
-        graphics_record_command(
-            self.entity,
-            DrawCommand::EllipseMode(processing::prelude::ShapeMode::from(mode)),
-        )
-        .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    pub fn ellipse_mode(&self, mode: &str) -> PyResult<()> {
+        let mode = ShapeMode::parse(mode)
+            .ok_or_else(|| PyValueError::new_err(format!("unknown ellipse mode: {mode:?}")))?;
+        graphics_record_command(self.entity, DrawCommand::EllipseMode(mode))
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    pub fn stroke_cap(&self, cap: u8) -> PyResult<()> {
-        graphics_record_command(
-            self.entity,
-            DrawCommand::StrokeCap(processing::prelude::StrokeCapMode::from(cap)),
-        )
-        .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    pub fn stroke_cap(&self, cap: &str) -> PyResult<()> {
+        let cap = StrokeCapMode::parse(cap)
+            .ok_or_else(|| PyValueError::new_err(format!("unknown stroke cap: {cap:?}")))?;
+        graphics_record_command(self.entity, DrawCommand::StrokeCap(cap))
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    pub fn stroke_join(&self, join: u8) -> PyResult<()> {
-        graphics_record_command(
-            self.entity,
-            DrawCommand::StrokeJoin(processing::prelude::StrokeJoinMode::from(join)),
-        )
-        .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    pub fn stroke_join(&self, join: &str) -> PyResult<()> {
+        let join = StrokeJoinMode::parse(join)
+            .ok_or_else(|| PyValueError::new_err(format!("unknown stroke join: {join:?}")))?;
+        graphics_record_command(self.entity, DrawCommand::StrokeJoin(join))
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
     pub fn rect(
@@ -795,8 +863,10 @@ impl Graphics {
         h: f32,
         start: f32,
         stop: f32,
-        mode: u8,
+        mode: &str,
     ) -> PyResult<()> {
+        let mode = ArcMode::parse(mode)
+            .ok_or_else(|| PyValueError::new_err(format!("unknown arc mode: {mode:?}")))?;
         graphics_record_command(
             self.entity,
             DrawCommand::Arc {
@@ -806,7 +876,7 @@ impl Graphics {
                 h,
                 start,
                 stop,
-                mode: processing::prelude::ArcMode::from(mode),
+                mode,
             },
         )
         .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
@@ -868,14 +938,11 @@ impl Graphics {
         .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    pub fn begin_shape(&self, kind: u8) -> PyResult<()> {
-        graphics_record_command(
-            self.entity,
-            DrawCommand::BeginShape {
-                kind: processing::prelude::ShapeKind::from(kind),
-            },
-        )
-        .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    pub fn begin_shape(&self, kind: &str) -> PyResult<()> {
+        let kind = ShapeKind::parse(kind)
+            .ok_or_else(|| PyValueError::new_err(format!("unknown shape kind: {kind:?}")))?;
+        graphics_record_command(self.entity, DrawCommand::BeginShape { kind })
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
     pub fn end_shape(&self, close: bool) -> PyResult<()> {
@@ -934,6 +1001,8 @@ impl Graphics {
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
+    // --- Font ---
+
     pub fn load_font(&self, path: &str) -> PyResult<Font> {
         font_load(path)
             .map(|entity| Font { entity })
@@ -956,6 +1025,8 @@ impl Graphics {
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
+    // --- Text ---
+
     #[pyo3(signature = (content, x, y, *args, max_w=None, max_h=None))]
     pub fn text(
         &self,
@@ -966,7 +1037,7 @@ impl Graphics {
         max_w: Option<f32>,
         max_h: Option<f32>,
     ) -> PyResult<()> {
-        // (x, y), (x, y, z), (x, y, max_w, max_h), or (x, y, z, max_w, max_h)
+        // text(content, x, y) or text(content, x, y, z) or text(content, x, y, max_w, max_h)
         let (z, mw, mh) = match args.len() {
             0 => (0.0, max_w, max_h),
             1 => {
@@ -984,7 +1055,11 @@ impl Graphics {
                 let h: f32 = args.get_item(2)?.extract()?;
                 (z, Some(w), Some(h))
             }
-            _ => return Err(PyRuntimeError::new_err("text() takes 3-6 positional arguments")),
+            _ => {
+                return Err(PyRuntimeError::new_err(
+                    "text() takes 3-6 positional arguments",
+                ));
+            }
         };
         graphics_record_command(
             self.entity,
@@ -1001,8 +1076,7 @@ impl Graphics {
     }
 
     pub fn text_style(&self, style: u8) -> PyResult<()> {
-        graphics_text_style(self.entity, style)
-            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+        graphics_text_style(self.entity, style).map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
     #[pyo3(signature = (content, x, y, max_w=None, max_h=None))]
@@ -1034,8 +1108,11 @@ impl Graphics {
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    /// Enable/configure an OpenType font feature. `value` may be a bool
-    /// (on/off) or an int (alternate index); defaults to 1.
+    /// Enable/configure an OpenType font feature.
+    /// text_feature("smcp")          -> enable (value=1)
+    /// text_feature("smcp", True)    -> enable (value=1)
+    /// text_feature("smcp", False)   -> disable (value=0)
+    /// text_feature("salt", 3)       -> select alternate 3
     #[pyo3(signature = (tag, value=None))]
     pub fn text_feature(&self, tag: &str, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
         let v: u16 = match value {
@@ -1066,72 +1143,26 @@ impl Graphics {
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    /// Glyph outlines as path commands, one list per glyph. Commands are
-    /// tuples: `("M", x, y, ...)`, `("L", x, y, ...)`, `("Q", cx, cy, x, y, ...)`,
-    /// `("C", cx1, cy1, cx2, cy2, x, y)`, or `("Z", ...)`.
-    pub fn text_to_paths(
-        &self,
-        content: &str,
-        x: f32,
-        y: f32,
-    ) -> PyResult<Vec<Vec<Py<PyAny>>>> {
-        use processing_render::render::primitive::text::PathCommand;
-
+    /// Extract glyph outlines as path commands (one list per glyph).
+    /// Each command is a tuple: ("M", x, y), ("L", x, y), ("Q", cx, cy, x, y),
+    /// ("C", cx1, cy1, cx2, cy2, x, y), or ("Z",).
+    pub fn text_to_paths(&self, content: &str, x: f32, y: f32) -> PyResult<Vec<Vec<Py<PyAny>>>> {
         let paths = graphics_text_to_paths(self.entity, content, x, y)
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
-
-        Python::attach(|py| {
-            Ok(paths
-                .into_iter()
-                .map(|glyph| {
-                    glyph
-                        .into_iter()
-                        .map(|cmd| match cmd {
-                            PathCommand::MoveTo(x, y) => ("M", x, y, 0.0, 0.0, 0.0, 0.0).into_pyobject(py).unwrap().into_any().unbind(),
-                            PathCommand::LineTo(x, y) => ("L", x, y, 0.0, 0.0, 0.0, 0.0).into_pyobject(py).unwrap().into_any().unbind(),
-                            PathCommand::QuadTo { cx, cy, x, y } => ("Q", cx, cy, x, y, 0.0, 0.0).into_pyobject(py).unwrap().into_any().unbind(),
-                            PathCommand::CubicTo { cx1, cy1, cx2, cy2, x, y } => ("C", cx1, cy1, cx2, cy2, x, y).into_pyobject(py).unwrap().into_any().unbind(),
-                            PathCommand::Close => ("Z", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0).into_pyobject(py).unwrap().into_any().unbind(),
-                        })
-                        .collect()
-                })
-                .collect())
-        })
+        Python::attach(|py| Ok(path_commands_to_py(py, paths)))
     }
 
-    /// Like `text_to_paths`, but split into one list per contour
-    /// (MoveTo..Close sequence) rather than per glyph.
-    pub fn text_to_contours(
-        &self,
-        content: &str,
-        x: f32,
-        y: f32,
-    ) -> PyResult<Vec<Vec<Py<PyAny>>>> {
-        use processing_render::render::primitive::text::PathCommand;
-
+    /// Extract glyph outlines as per-contour path commands.
+    /// Each contour (MoveTo...Close sequence) is a separate list.
+    /// Commands use the same tuple shapes as `text_to_paths`.
+    pub fn text_to_contours(&self, content: &str, x: f32, y: f32) -> PyResult<Vec<Vec<Py<PyAny>>>> {
         let contours = graphics_text_to_contours(self.entity, content, x, y)
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
-
-        Python::attach(|py| {
-            Ok(contours
-                .into_iter()
-                .map(|contour| {
-                    contour
-                        .into_iter()
-                        .map(|cmd| match cmd {
-                            PathCommand::MoveTo(x, y) => ("M", x, y, 0.0, 0.0, 0.0, 0.0).into_pyobject(py).unwrap().into_any().unbind(),
-                            PathCommand::LineTo(x, y) => ("L", x, y, 0.0, 0.0, 0.0, 0.0).into_pyobject(py).unwrap().into_any().unbind(),
-                            PathCommand::QuadTo { cx, cy, x, y } => ("Q", cx, cy, x, y, 0.0, 0.0).into_pyobject(py).unwrap().into_any().unbind(),
-                            PathCommand::CubicTo { cx1, cy1, cx2, cy2, x, y } => ("C", cx1, cy1, cx2, cy2, x, y).into_pyobject(py).unwrap().into_any().unbind(),
-                            PathCommand::Close => ("Z", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0).into_pyobject(py).unwrap().into_any().unbind(),
-                        })
-                        .collect()
-                })
-                .collect())
-        })
+        Python::attach(|py| Ok(path_commands_to_py(py, contours)))
     }
 
-    /// Sample `(x, y)` points along text outlines.
+    /// Sample points along text outlines.
+    /// Returns list of [x, y] points.
     #[pyo3(signature = (content, x, y, sample_factor=None))]
     pub fn text_to_points(
         &self,
@@ -1144,27 +1175,21 @@ impl Graphics {
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    /// 3D extruded mesh from text outlines.
-    pub fn text_to_model(
-        &self,
-        content: &str,
-        x: f32,
-        y: f32,
-        depth: f32,
-    ) -> PyResult<Geometry> {
+    /// Generate a 3D extruded mesh from text outlines.
+    pub fn text_to_model(&self, content: &str, x: f32, y: f32, depth: f32) -> PyResult<Geometry> {
         let mesh = graphics_text_to_model(self.entity, content, x, y, depth)
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
-        let entity = geometry_create_from_mesh(mesh)
-            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        let entity =
+            geometry_create_from_mesh(mesh).map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
         Ok(Geometry { entity })
     }
 
-    /// Per-glyph colors for the next `text()` call as `(r, g, b, a)` tuples.
-    pub fn text_glyph_colors(&self, colors: Vec<(f32, f32, f32, f32)>) -> PyResult<()> {
-        let colors: Vec<bevy::color::Color> = colors
-            .into_iter()
-            .map(|(r, g, b, a)| bevy::color::Color::srgba(r, g, b, a))
-            .collect();
+    /// Set per-glyph colors for the next text() call.
+    ///
+    /// `colors` is a list of color objects (as built by `color(...)`); they are
+    /// cycled across the glyphs of the next `text()` call.
+    pub fn text_glyph_colors(&self, colors: Vec<PyRef<crate::color::PyColor>>) -> PyResult<()> {
+        let colors: Vec<bevy::color::Color> = colors.iter().map(|c| c.0).collect();
         graphics_text_glyph_colors(self.entity, colors)
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
@@ -1192,24 +1217,19 @@ impl Graphics {
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    /// Text direction: 0=AUTO, 1=LTR, 2=RTL.
-    pub fn text_direction(&self, dir: u8) -> PyResult<()> {
-        graphics_text_direction(self.entity, dir)
-            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
-    }
-
     pub fn text_wrap(&self, mode: u8) -> PyResult<()> {
         use processing::prelude::TextWrapMode;
         graphics_record_command(self.entity, DrawCommand::TextWrap(TextWrapMode::from(mode)))
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
+    /// Number of lines `content` wraps to.
     pub fn text_line_count(&self, content: &str) -> PyResult<usize> {
         graphics_text_line_count(self.entity, content)
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    /// Per-line `(text, (x, y, w, h))` after layout.
+    /// Per-line info as a list of `(text, (x, y, w, h))` tuples.
     #[pyo3(signature = (content, x, y, max_w=None, max_h=None))]
     pub fn text_lines(
         &self,
@@ -1229,7 +1249,7 @@ impl Graphics {
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    /// Per-glyph bounding rects as `(x, y, w, h)`.
+    /// Per-glyph bounding rects as a list of `(x, y, w, h)` tuples.
     #[pyo3(signature = (content, x, y, max_w=None, max_h=None))]
     pub fn text_glyph_rects(
         &self,
@@ -1255,13 +1275,11 @@ impl Graphics {
     }
 
     pub fn text_ascent(&self) -> PyResult<f32> {
-        graphics_text_ascent(self.entity)
-            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+        graphics_text_ascent(self.entity).map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
     pub fn text_descent(&self) -> PyResult<f32> {
-        graphics_text_descent(self.entity)
-            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+        graphics_text_descent(self.entity).map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
     /// Loads an image from a file and returns an Image object.
@@ -1339,12 +1357,11 @@ impl Graphics {
     /// - `CORNER` (default) — `dx`, `dy` is the top-left corner.
     /// - `CORNERS` — `dx`, `dy` and `d_width`, `d_height` are opposite corners.
     /// - `CENTER` — `dx`, `dy` is the center of the image.
-    pub fn image_mode(&self, mode: u8) -> PyResult<()> {
-        graphics_record_command(
-            self.entity,
-            DrawCommand::ImageMode(processing::prelude::ShapeMode::from(mode)),
-        )
-        .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    pub fn image_mode(&self, mode: &str) -> PyResult<()> {
+        let mode = ShapeMode::parse(mode)
+            .ok_or_else(|| PyValueError::new_err(format!("unknown image mode: {mode:?}")))?;
+        graphics_record_command(self.entity, DrawCommand::ImageMode(mode))
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
     pub fn create_image(&self, width: u32, height: u32) -> PyResult<Image> {
@@ -1374,30 +1391,89 @@ impl Graphics {
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
+    pub fn push_style(&self) -> PyResult<()> {
+        graphics_record_command(self.entity, DrawCommand::PushStyle)
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    }
+
+    pub fn pop_style(&self) -> PyResult<()> {
+        graphics_record_command(self.entity, DrawCommand::PopStyle)
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    }
+
+    pub fn push(&self) -> PyResult<()> {
+        graphics_record_command(self.entity, DrawCommand::PushStyle)
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        graphics_record_command(self.entity, DrawCommand::PushMatrix)
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    }
+
+    pub fn pop(&self) -> PyResult<()> {
+        graphics_record_command(self.entity, DrawCommand::PopStyle)
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        graphics_record_command(self.entity, DrawCommand::PopMatrix)
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    }
+
     #[pyo3(signature = (*args))]
     pub fn translate(&self, args: &Bound<'_, PyTuple>) -> PyResult<()> {
-        let v = extract_vec2(args)?;
+        let v = if args.len() == 3 {
+            extract_vec3(args)?
+        } else {
+            extract_vec2(args)?.extend(0.0)
+        };
         graphics_record_command(self.entity, DrawCommand::Translate(v))
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
     pub fn rotate(&self, angle: f32) -> PyResult<()> {
-        graphics_record_command(self.entity, DrawCommand::Rotate { angle })
-            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+        graphics_record_command(
+            self.entity,
+            DrawCommand::Rotate {
+                angle,
+                axis: Vec3::Z,
+            },
+        )
+        .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
     pub fn rotate_x(&self, angle: f32) -> PyResult<()> {
-        graphics_record_command(self.entity, DrawCommand::RotateX { angle })
-            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+        graphics_record_command(
+            self.entity,
+            DrawCommand::Rotate {
+                angle,
+                axis: Vec3::X,
+            },
+        )
+        .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
     pub fn rotate_y(&self, angle: f32) -> PyResult<()> {
-        graphics_record_command(self.entity, DrawCommand::RotateY { angle })
-            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+        graphics_record_command(
+            self.entity,
+            DrawCommand::Rotate {
+                angle,
+                axis: Vec3::Y,
+            },
+        )
+        .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
     pub fn rotate_z(&self, angle: f32) -> PyResult<()> {
-        graphics_record_command(self.entity, DrawCommand::RotateZ { angle })
+        graphics_record_command(
+            self.entity,
+            DrawCommand::Rotate {
+                angle,
+                axis: Vec3::Z,
+            },
+        )
+        .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    }
+
+    #[pyo3(signature = (angle, *args))]
+    pub fn rotate_axis(&self, angle: f32, args: &Bound<'_, PyTuple>) -> PyResult<()> {
+        let axis = extract_vec3(args)?;
+        graphics_record_command(self.entity, DrawCommand::Rotate { angle, axis })
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
@@ -1562,7 +1638,16 @@ impl Graphics {
 
     #[pyo3(signature = (*args))]
     pub fn scale(&self, args: &Bound<'_, PyTuple>) -> PyResult<()> {
-        let v = extract_vec2(args)?;
+        let v = if args.len() == 3 {
+            extract_vec3(args)?
+        } else if args.len() == 1 {
+            match args.get_item(0)?.extract::<f32>() {
+                Ok(s) => Vec3::splat(s),
+                Err(_) => extract_vec2(args)?.extend(1.0),
+            }
+        } else {
+            extract_vec2(args)?.extend(1.0)
+        };
         graphics_record_command(self.entity, DrawCommand::Scale(v))
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
@@ -1590,14 +1675,14 @@ impl Graphics {
     #[pyo3(name = "color_mode", signature = (mode, max1=None, max2=None, max3=None, max_alpha=None))]
     pub fn set_color_mode<'py>(
         &self,
-        mode: u8,
+        mode: &str,
         max1: Option<&Bound<'py, PyAny>>,
         max2: Option<&Bound<'py, PyAny>>,
         max3: Option<&Bound<'py, PyAny>>,
         max_alpha: Option<&Bound<'py, PyAny>>,
     ) -> PyResult<()> {
-        let space = crate::color::ColorSpace::from_u8(mode)
-            .ok_or_else(|| PyRuntimeError::new_err(format!("unknown color space: {mode}")))?;
+        let space = crate::color::ColorSpace::parse(mode)
+            .ok_or_else(|| PyValueError::new_err(format!("unknown color space: {mode:?}")))?;
         let parse =
             |obj: &Bound<'py, PyAny>, ch: usize| crate::color::parse_numeric(&space, obj, ch);
         let new_mode = match (max1, max2, max3, max_alpha) {

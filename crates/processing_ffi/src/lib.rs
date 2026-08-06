@@ -1,9 +1,9 @@
 use bevy::{
-    math::{Vec2, Vec3, Vec4},
+    math::{Affine3A, Mat4, Vec2, Vec3, Vec4},
     prelude::Entity,
     render::render_resource::{Extent3d, TextureFormat},
 };
-use processing::prelude::{error::ProcessingError, *};
+use processing::prelude::{error::ProcessingError, shader_value::ShaderValue, *};
 
 use crate::color::Color;
 
@@ -115,6 +115,30 @@ pub extern "C" fn processing_surface_create_x11(
         .unwrap_or(0)
 }
 
+/// Create a WebGPU surface on Linux. The display server is auto-detected from
+/// the environment.
+///
+/// SAFETY:
+/// - Init has been called.
+/// - The handle types match the active display server.
+/// - This is called from the same thread as init.
+#[cfg(target_os = "linux")]
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_surface_create(
+    window_handle: u64,
+    display_handle: u64,
+    width: u32,
+    height: u32,
+    scale_factor: f32,
+) -> u64 {
+    error::clear_error();
+    error::check(|| {
+        surface_create_linux(window_handle, display_handle, width, height, scale_factor)
+    })
+    .map(|e| e.to_bits())
+    .unwrap_or(0)
+}
+
 /// Create a graphics context for a surface.
 ///
 /// SAFETY:
@@ -199,6 +223,23 @@ pub extern "C" fn processing_background_image(graphics_id: u64, image_id: u64) {
     let image_entity = Entity::from_bits(image_id);
     error::check(|| {
         graphics_record_command(graphics_entity, DrawCommand::BackgroundImage(image_entity))
+    });
+}
+
+/// Clear the graphics surface to transparent.
+///
+/// SAFETY:
+/// - graphics_id is a valid ID returned from graphics_create.
+/// - This is called from the same thread as init.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_clear(graphics_id: u64) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| {
+        graphics_record_command(
+            graphics_entity,
+            DrawCommand::BackgroundColor(bevy::prelude::Color::NONE),
+        )
     });
 }
 
@@ -424,6 +465,60 @@ pub extern "C" fn processing_pop_matrix(graphics_id: u64) {
     error::check(|| graphics_record_command(graphics_entity, DrawCommand::PopMatrix));
 }
 
+/// Push the current style onto the style stack.
+///
+/// SAFETY:
+/// - graphics_id is a valid ID returned from graphics_create.
+/// - This is called from the same thread as init.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_push_style(graphics_id: u64) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| graphics_record_command(graphics_entity, DrawCommand::PushStyle));
+}
+
+/// Pop the most recently saved style off the style stack.
+///
+/// SAFETY:
+/// - graphics_id is a valid ID returned from graphics_create.
+/// - This is called from the same thread as init.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_pop_style(graphics_id: u64) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| graphics_record_command(graphics_entity, DrawCommand::PopStyle));
+}
+
+/// Push both the style and the transformation matrix onto their stacks.
+///
+/// SAFETY:
+/// - graphics_id is a valid ID returned from graphics_create.
+/// - This is called from the same thread as init.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_push(graphics_id: u64) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| {
+        graphics_record_command(graphics_entity, DrawCommand::PushStyle)?;
+        graphics_record_command(graphics_entity, DrawCommand::PushMatrix)
+    });
+}
+
+/// Pop both the style and the transformation matrix off their stacks.
+///
+/// SAFETY:
+/// - graphics_id is a valid ID returned from graphics_create.
+/// - This is called from the same thread as init.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_pop(graphics_id: u64) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| {
+        graphics_record_command(graphics_entity, DrawCommand::PopStyle)?;
+        graphics_record_command(graphics_entity, DrawCommand::PopMatrix)
+    });
+}
+
 /// Reset the transformation matrix to identity.
 ///
 /// SAFETY:
@@ -442,24 +537,32 @@ pub extern "C" fn processing_reset_matrix(graphics_id: u64) {
 /// - graphics_id is a valid ID returned from graphics_create.
 /// - This is called from the same thread as init.
 #[unsafe(no_mangle)]
-pub extern "C" fn processing_translate(graphics_id: u64, x: f32, y: f32) {
+pub extern "C" fn processing_translate(graphics_id: u64, x: f32, y: f32, z: f32) {
     error::clear_error();
     let graphics_entity = Entity::from_bits(graphics_id);
     error::check(|| {
-        graphics_record_command(graphics_entity, DrawCommand::Translate(Vec2::new(x, y)))
+        graphics_record_command(graphics_entity, DrawCommand::Translate(Vec3::new(x, y, z)))
     });
 }
 
-/// Rotate the coordinate system.
+/// Rotate the coordinate system by `angle` about the axis (x, y, z).
 ///
 /// SAFETY:
 /// - graphics_id is a valid ID returned from graphics_create.
 /// - This is called from the same thread as init.
 #[unsafe(no_mangle)]
-pub extern "C" fn processing_rotate(graphics_id: u64, angle: f32) {
+pub extern "C" fn processing_rotate(graphics_id: u64, angle: f32, x: f32, y: f32, z: f32) {
     error::clear_error();
     let graphics_entity = Entity::from_bits(graphics_id);
-    error::check(|| graphics_record_command(graphics_entity, DrawCommand::Rotate { angle }));
+    error::check(|| {
+        graphics_record_command(
+            graphics_entity,
+            DrawCommand::Rotate {
+                angle,
+                axis: Vec3::new(x, y, z),
+            },
+        )
+    });
 }
 
 /// Scale the coordinate system.
@@ -468,10 +571,12 @@ pub extern "C" fn processing_rotate(graphics_id: u64, angle: f32) {
 /// - graphics_id is a valid ID returned from graphics_create.
 /// - This is called from the same thread as init.
 #[unsafe(no_mangle)]
-pub extern "C" fn processing_scale(graphics_id: u64, x: f32, y: f32) {
+pub extern "C" fn processing_scale(graphics_id: u64, x: f32, y: f32, z: f32) {
     error::clear_error();
     let graphics_entity = Entity::from_bits(graphics_id);
-    error::check(|| graphics_record_command(graphics_entity, DrawCommand::Scale(Vec2::new(x, y))));
+    error::check(|| {
+        graphics_record_command(graphics_entity, DrawCommand::Scale(Vec3::new(x, y, z)))
+    });
 }
 
 /// Shear along the X axis.
@@ -983,10 +1088,13 @@ pub extern "C" fn processing_end_contour(graphics_id: u64) {
     error::check(|| graphics_record_command(graphics_entity, DrawCommand::EndContour));
 }
 
-/// Load a font file. Returns 0 on error.
+// --- Font ---
+
+/// Load a font file and return a font entity ID.
+/// Returns 0 on error.
 ///
-/// SAFETY:
-/// - `path_ptr` is a valid null-terminated UTF-8 C string.
+/// # Safety
+/// - path_ptr is a valid pointer to a null-terminated string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_load_font(path_ptr: *const std::ffi::c_char) -> u64 {
     error::clear_error();
@@ -994,10 +1102,11 @@ pub unsafe extern "C" fn processing_load_font(path_ptr: *const std::ffi::c_char)
     error::check(|| font_load(&path).map(|e| e.to_bits())).unwrap_or(0)
 }
 
-/// Create a font handle from a font family name. Returns 0 on error.
+/// Create a font handle from an existing font family name.
+/// Returns 0 on error.
 ///
-/// SAFETY:
-/// - `name_ptr` is a valid null-terminated UTF-8 C string.
+/// # Safety
+/// - name_ptr is a valid pointer to a null-terminated string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_create_font(name_ptr: *const std::ffi::c_char) -> u64 {
     error::clear_error();
@@ -1005,7 +1114,8 @@ pub unsafe extern "C" fn processing_create_font(name_ptr: *const std::ffi::c_cha
     error::check(|| font_create(&name).map(|e| e.to_bits())).unwrap_or(0)
 }
 
-/// Returns the number of variable font axes, or 0 if not variable / not found.
+/// Query the number of variable font axes for a font.
+/// Returns 0 if the font is not variable or not found.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_font_variation_count(font_id: u64) -> u32 {
     error::clear_error();
@@ -1013,11 +1123,12 @@ pub extern "C" fn processing_font_variation_count(font_id: u64) -> u32 {
     error::check(|| font_variations(font_entity).map(|v| v.len() as u32)).unwrap_or(0)
 }
 
-/// Write axis info (4-byte tag, min, max, default) for the axis at `index`.
+/// Query variable font axis info.
+/// Writes tag (4 bytes), min, max, default to out buffer at the given index.
 ///
-/// SAFETY:
-/// - `out_tag` is valid for 4 bytes.
-/// - `out_min`, `out_max`, `out_default` are valid for one f32 each.
+/// # Safety
+/// - out_tag is a valid pointer to at least 4 writable bytes.
+/// - out_min, out_max, out_default are valid pointers to writable f32 values.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_font_variation(
     font_id: u64,
@@ -1030,26 +1141,27 @@ pub unsafe extern "C" fn processing_font_variation(
     error::clear_error();
     let font_entity = Entity::from_bits(font_id);
     let axes = error::check(|| font_variations(font_entity));
-    if let Some(axes) = axes {
-        if let Some(axis) = axes.get(index as usize) {
-            let tag_bytes = axis.tag.as_bytes();
-            let len = tag_bytes.len().min(4);
-            unsafe {
-                std::ptr::copy_nonoverlapping(tag_bytes.as_ptr(), out_tag, len);
-                for i in len..4 {
-                    *out_tag.add(i) = b' ';
-                }
-                *out_min = axis.min;
-                *out_max = axis.max;
-                *out_default = axis.default;
+    if let Some(axes) = axes
+        && let Some(axis) = axes.get(index as usize)
+    {
+        let tag_bytes = axis.tag.as_bytes();
+        let len = tag_bytes.len().min(4);
+        unsafe {
+            std::ptr::copy_nonoverlapping(tag_bytes.as_ptr(), out_tag, len);
+            for i in len..4 {
+                *out_tag.add(i) = b' ';
             }
-            return true;
+            *out_min = axis.min;
+            *out_max = axis.max;
+            *out_default = axis.default;
         }
+        return true;
     }
     false
 }
 
-/// Set the current text font. Pass 0 to reset to the default font.
+/// Set the current text font.
+/// Pass 0 to reset to the default font.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_text_font(graphics_id: u64, font_id: u64) {
     error::clear_error();
@@ -1062,10 +1174,12 @@ pub extern "C" fn processing_text_font(graphics_id: u64, font_id: u64) {
     error::check(|| graphics_text_font(graphics_entity, font_entity));
 }
 
+// --- Text ---
+
 /// Draw text at a position.
 ///
-/// SAFETY:
-/// - `str_ptr` is a valid null-terminated UTF-8 C string.
+/// # Safety
+/// - str_ptr is a valid pointer to a null-terminated string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_text(
     graphics_id: u64,
@@ -1095,8 +1209,8 @@ pub unsafe extern "C" fn processing_text(
 
 /// Draw text at a 3D position.
 ///
-/// SAFETY:
-/// - `str_ptr` is a valid null-terminated UTF-8 C string.
+/// # Safety
+/// - str_ptr is a valid pointer to a null-terminated string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_text_3d(
     graphics_id: u64,
@@ -1125,7 +1239,7 @@ pub unsafe extern "C" fn processing_text_3d(
     });
 }
 
-/// Draw an integer as text.
+/// Draw an integer as text at a position.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_text_int(graphics_id: u64, value: i32, x: f32, y: f32) {
     error::clear_error();
@@ -1146,7 +1260,7 @@ pub extern "C" fn processing_text_int(graphics_id: u64, value: i32, x: f32, y: f
     });
 }
 
-/// Draw a float as text, formatted to 3 decimal places.
+/// Draw a float as text at a position (formatted to 3 decimal places).
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_text_float(graphics_id: u64, value: f32, x: f32, y: f32) {
     error::clear_error();
@@ -1167,10 +1281,10 @@ pub extern "C" fn processing_text_float(graphics_id: u64, value: f32, x: f32, y:
     });
 }
 
-/// Draw text within a bounding box, wrapping at word boundaries.
+/// Draw text within a bounding box (with word wrapping).
 ///
-/// SAFETY:
-/// - `str_ptr` is a valid null-terminated UTF-8 C string.
+/// # Safety
+/// - str_ptr is a valid pointer to a null-terminated string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_text_box(
     graphics_id: u64,
@@ -1200,7 +1314,7 @@ pub unsafe extern "C" fn processing_text_box(
     });
 }
 
-/// Set the text style: 0=NORMAL, 1=ITALIC, 2=BOLD, 3=BOLDITALIC.
+/// Set the text style. 0=NORMAL, 1=ITALIC, 2=BOLD, 3=BOLDITALIC
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_text_style(graphics_id: u64, style: u8) {
     error::clear_error();
@@ -1208,11 +1322,11 @@ pub extern "C" fn processing_text_style(graphics_id: u64, style: u8) {
     error::check(|| graphics_text_style(graphics_entity, style));
 }
 
-/// Write the bounding box of text as `[x, y, w, h]` into `out_bounds`.
+/// Compute the bounding box of text. Writes [x, y, w, h] to out_bounds.
 ///
-/// SAFETY:
-/// - `str_ptr` is a valid null-terminated UTF-8 C string.
-/// - `out_bounds` is valid for 4 f32 writes.
+/// # Safety
+/// - str_ptr is a valid pointer to a null-terminated string.
+/// - out_bounds is a valid pointer to a writable float array of at least 4 elements.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_text_bounds(
     graphics_id: u64,
@@ -1223,8 +1337,7 @@ pub unsafe extern "C" fn processing_text_bounds(
 ) {
     error::clear_error();
     let graphics_entity = Entity::from_bits(graphics_id);
-    let content = unsafe { std::ffi::CStr::from_ptr(str_ptr) }
-        .to_string_lossy();
+    let content = unsafe { std::ffi::CStr::from_ptr(str_ptr) }.to_string_lossy();
     if let Some(bounds) =
         error::check(|| graphics_text_bounds(graphics_entity, &content, x, y, None, None))
     {
@@ -1237,10 +1350,10 @@ pub unsafe extern "C" fn processing_text_bounds(
     }
 }
 
-/// Set a variable-font axis value (e.g. "wdth", 75.0).
+/// Set a font variation axis value (e.g. "wdth", 75.0).
 ///
-/// SAFETY:
-/// - `tag_ptr` is a valid null-terminated UTF-8 C string (4 chars).
+/// # Safety
+/// - tag_ptr is a valid pointer to a null-terminated string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_text_variation(
     graphics_id: u64,
@@ -1253,7 +1366,7 @@ pub unsafe extern "C" fn processing_text_variation(
     error::check(|| graphics_text_variation(graphics_entity, &tag, value));
 }
 
-/// Clear all variable-font axis overrides.
+/// Clear all font variation axis overrides.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_clear_text_variations(graphics_id: u64) {
     error::clear_error();
@@ -1261,10 +1374,10 @@ pub extern "C" fn processing_clear_text_variations(graphics_id: u64) {
     error::check(|| graphics_clear_text_variations(graphics_entity));
 }
 
-/// Enable an OpenType font feature (e.g. "smcp", 1).
+/// Enable/configure an OpenType font feature (e.g. "smcp", 1).
 ///
-/// SAFETY:
-/// - `tag_ptr` is a valid null-terminated UTF-8 C string (4 chars).
+/// # Safety
+/// - tag_ptr is a valid pointer to a null-terminated string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_text_feature(
     graphics_id: u64,
@@ -1279,8 +1392,8 @@ pub unsafe extern "C" fn processing_text_feature(
 
 /// Disable an OpenType font feature.
 ///
-/// SAFETY:
-/// - `tag_ptr` is a valid null-terminated UTF-8 C string (4 chars).
+/// # Safety
+/// - tag_ptr is a valid pointer to a null-terminated string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_no_text_feature(
     graphics_id: u64,
@@ -1292,7 +1405,7 @@ pub unsafe extern "C" fn processing_no_text_feature(
     error::check(|| graphics_no_text_feature(graphics_entity, &tag));
 }
 
-/// Clear all OpenType feature overrides.
+/// Clear all OpenType font feature overrides.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_clear_text_features(graphics_id: u64) {
     error::clear_error();
@@ -1300,11 +1413,11 @@ pub extern "C" fn processing_clear_text_features(graphics_id: u64) {
     error::check(|| graphics_clear_text_features(graphics_entity));
 }
 
-/// Set per-glyph colors for the next `text()` call. `colors_ptr` is an array
-/// of `(r, g, b, a)` float tuples.
+/// Set per-glyph colors for the next text() call.
+/// colors_ptr points to an array of (r, g, b, a) float tuples.
 ///
-/// SAFETY:
-/// - `colors_ptr` is valid for `count * 4` f32 reads.
+/// # Safety
+/// - colors_ptr is a valid pointer to count * 4 readable floats.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_text_glyph_colors(
     graphics_id: u64,
@@ -1330,6 +1443,7 @@ pub extern "C" fn processing_text_weight(graphics_id: u64, weight: f32) {
     error::check(|| graphics_text_weight(graphics_entity, weight));
 }
 
+/// Set the text size.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_text_size(graphics_id: u64, size: f32) {
     error::clear_error();
@@ -1337,8 +1451,9 @@ pub extern "C" fn processing_text_size(graphics_id: u64, size: f32) {
     error::check(|| graphics_record_command(graphics_entity, DrawCommand::TextSize(size)));
 }
 
-/// Set text alignment. `h`: 0=LEFT, 1=CENTER, 2=RIGHT. `v`: 0=BASELINE, 1=TOP,
-/// 2=CENTER, 3=BOTTOM.
+/// Set the text alignment.
+/// h: 0=LEFT, 1=CENTER, 2=RIGHT
+/// v: 0=BASELINE, 1=TOP, 2=CENTER, 3=BOTTOM
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_text_align(graphics_id: u64, h: u8, v: u8) {
     error::clear_error();
@@ -1346,6 +1461,7 @@ pub extern "C" fn processing_text_align(graphics_id: u64, h: u8, v: u8) {
     error::check(|| graphics_text_align(graphics_entity, h, v));
 }
 
+/// Set the text leading (line spacing).
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_text_leading(graphics_id: u64, leading: f32) {
     error::clear_error();
@@ -1353,15 +1469,7 @@ pub extern "C" fn processing_text_leading(graphics_id: u64, leading: f32) {
     error::check(|| graphics_record_command(graphics_entity, DrawCommand::TextLeading(leading)));
 }
 
-/// Set text direction: 0=AUTO, 1=LTR, 2=RTL.
-#[unsafe(no_mangle)]
-pub extern "C" fn processing_text_direction(graphics_id: u64, dir: u8) {
-    error::clear_error();
-    let graphics_entity = Entity::from_bits(graphics_id);
-    error::check(|| graphics_text_direction(graphics_entity, dir));
-}
-
-/// Set text wrap mode: 0=WORD, 1=CHAR.
+/// Set the text wrap mode. 0=WORD, 1=CHAR
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_text_wrap(graphics_id: u64, mode: u8) {
     error::clear_error();
@@ -1371,8 +1479,8 @@ pub extern "C" fn processing_text_wrap(graphics_id: u64, mode: u8) {
 
 /// Measure the width of text.
 ///
-/// SAFETY:
-/// - `str_ptr` is a valid null-terminated UTF-8 C string.
+/// # Safety
+/// - str_ptr is a valid pointer to a null-terminated string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn processing_text_width(
     graphics_id: u64,
@@ -1384,6 +1492,7 @@ pub unsafe extern "C" fn processing_text_width(
     error::check(|| graphics_text_width(graphics_entity, &content)).unwrap_or(0.0)
 }
 
+/// Get the text ascent for the current font size.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_text_ascent(graphics_id: u64) -> f32 {
     error::clear_error();
@@ -1391,6 +1500,7 @@ pub extern "C" fn processing_text_ascent(graphics_id: u64) -> f32 {
     error::check(|| graphics_text_ascent(graphics_entity)).unwrap_or(0.0)
 }
 
+/// Get the text descent for the current font size.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_text_descent(graphics_id: u64) -> f32 {
     error::clear_error();
@@ -1542,6 +1652,262 @@ pub unsafe extern "C" fn processing_image_readback(
     });
 }
 
+/// Load pixels from the graphics surface into a caller-provided buffer.
+///
+/// # Safety
+/// - Init and graphics_create have been called.
+/// - graphics_id is a valid ID returned from graphics_create.
+/// - buffer is a valid pointer to at least buffer_len Color elements.
+/// - buffer_len must equal width * height of the graphics surface.
+/// - This is called from the same thread as init.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn processing_graphics_readback(
+    graphics_id: u64,
+    buffer: *mut Color,
+    buffer_len: usize,
+) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| {
+        let colors = graphics_readback(graphics_entity)?;
+
+        if colors.len() != buffer_len {
+            let error_msg = format!(
+                "Buffer size mismatch: expected {}, got {}",
+                colors.len(),
+                buffer_len
+            );
+            error::set_error(&error_msg);
+            return Err(error::ProcessingError::InvalidArgument(error_msg));
+        }
+
+        // SAFETY: Caller guarantees buffer is valid for buffer_len elements
+        unsafe {
+            let buffer_slice = std::slice::from_raw_parts_mut(buffer, buffer_len);
+            for (i, color) in colors.iter().enumerate() {
+                buffer_slice[i] = Color::from_linear(*color);
+            }
+        }
+
+        Ok(())
+    });
+}
+
+/// Write a caller-provided pixel buffer back onto the graphics surface.
+///
+/// # Safety
+/// - Init and graphics_create have been called.
+/// - graphics_id is a valid ID returned from graphics_create.
+/// - buffer is a valid pointer to at least buffer_len Color elements.
+/// - buffer_len must equal width * height of the graphics surface.
+/// - This is called from the same thread as init.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn processing_graphics_update(
+    graphics_id: u64,
+    buffer: *const Color,
+    buffer_len: usize,
+) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| {
+        // SAFETY: Caller guarantees buffer is valid for buffer_len elements
+        let pixels: Vec<_> = unsafe { std::slice::from_raw_parts(buffer, buffer_len) }
+            .iter()
+            .map(|color| color.to_linear())
+            .collect();
+        graphics_update(graphics_entity, &pixels)
+    });
+}
+
+/// Write a caller-provided pixel buffer onto a rectangular region of the surface.
+///
+/// # Safety
+/// - Init and graphics_create have been called.
+/// - graphics_id is a valid ID returned from graphics_create.
+/// - buffer is a valid pointer to at least buffer_len Color elements.
+/// - buffer_len must equal width * height.
+/// - This is called from the same thread as init.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn processing_graphics_update_region(
+    graphics_id: u64,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    buffer: *const Color,
+    buffer_len: usize,
+) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| {
+        // SAFETY: Caller guarantees buffer is valid for buffer_len elements
+        let pixels: Vec<_> = unsafe { std::slice::from_raw_parts(buffer, buffer_len) }
+            .iter()
+            .map(|color| color.to_linear())
+            .collect();
+        graphics_update_region(graphics_entity, x, y, width, height, &pixels)
+    });
+}
+
+/// Set a single pixel on the graphics surface.
+///
+/// SAFETY:
+/// - graphics_id is a valid ID returned from graphics_create.
+/// - This is called from the same thread as init.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_graphics_set(graphics_id: u64, x: u32, y: u32, color: Color) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| graphics_update_region(graphics_entity, x, y, 1, 1, &[color.to_linear()]));
+}
+
+/// Set the tint color applied to images.
+///
+/// SAFETY:
+/// - graphics_id is a valid ID returned from graphics_create.
+/// - This is called from the same thread as init.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_tint(graphics_id: u64, color: Color) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| {
+        let mode = graphics_get_color_mode(graphics_entity)?;
+        graphics_record_command(graphics_entity, DrawCommand::Tint(color.resolve(&mode)))
+    });
+}
+
+/// Remove the image tint.
+///
+/// SAFETY:
+/// - graphics_id is a valid ID returned from graphics_create.
+/// - This is called from the same thread as init.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_no_tint(graphics_id: u64) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| graphics_record_command(graphics_entity, DrawCommand::NoTint));
+}
+
+/// Set how image() interprets its coordinates (CORNER/CORNERS/CENTER/RADIUS).
+///
+/// SAFETY:
+/// - graphics_id is a valid ID returned from graphics_create.
+/// - This is called from the same thread as init.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_image_mode(graphics_id: u64, mode: u8) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| {
+        graphics_record_command(
+            graphics_entity,
+            DrawCommand::ImageMode(processing::prelude::ShapeMode::from(mode)),
+        )
+    });
+}
+
+/// Draw an image at (dx, dy) at its native size.
+///
+/// SAFETY:
+/// - graphics_id and image_id are valid IDs from graphics_create/image_create.
+/// - This is called from the same thread as init.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_image(graphics_id: u64, image_id: u64, dx: f32, dy: f32) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    let image_entity = Entity::from_bits(image_id);
+    error::check(|| {
+        graphics_record_command(
+            graphics_entity,
+            DrawCommand::Image {
+                entity: image_entity,
+                dx,
+                dy,
+                d_width: None,
+                d_height: None,
+                sx: None,
+                sy: None,
+                s_width: None,
+                s_height: None,
+            },
+        )
+    });
+}
+
+/// Draw an image at (dx, dy) scaled to (d_width, d_height).
+///
+/// SAFETY:
+/// - graphics_id and image_id are valid IDs from graphics_create/image_create.
+/// - This is called from the same thread as init.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_image_scaled(
+    graphics_id: u64,
+    image_id: u64,
+    dx: f32,
+    dy: f32,
+    d_width: f32,
+    d_height: f32,
+) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    let image_entity = Entity::from_bits(image_id);
+    error::check(|| {
+        graphics_record_command(
+            graphics_entity,
+            DrawCommand::Image {
+                entity: image_entity,
+                dx,
+                dy,
+                d_width: Some(d_width),
+                d_height: Some(d_height),
+                sx: None,
+                sy: None,
+                s_width: None,
+                s_height: None,
+            },
+        )
+    });
+}
+
+/// Draw the (sx, sy, s_width, s_height) source region of an image into the
+/// (dx, dy, d_width, d_height) destination rectangle.
+///
+/// SAFETY:
+/// - graphics_id and image_id are valid IDs from graphics_create/image_create.
+/// - This is called from the same thread as init.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_image_region(
+    graphics_id: u64,
+    image_id: u64,
+    dx: f32,
+    dy: f32,
+    d_width: f32,
+    d_height: f32,
+    sx: f32,
+    sy: f32,
+    s_width: f32,
+    s_height: f32,
+) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    let image_entity = Entity::from_bits(image_id);
+    error::check(|| {
+        graphics_record_command(
+            graphics_entity,
+            DrawCommand::Image {
+                entity: image_entity,
+                dx,
+                dy,
+                d_width: Some(d_width),
+                d_height: Some(d_height),
+                sx: Some(sx),
+                sy: Some(sy),
+                s_width: Some(s_width),
+                s_height: Some(s_height),
+            },
+        )
+    });
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_mode_3d(graphics_id: u64) {
     error::clear_error();
@@ -1679,6 +2045,202 @@ pub extern "C" fn processing_transform_reset(entity_id: u64) {
     error::clear_error();
     let entity = Entity::from_bits(entity_id);
     error::check(|| transform_reset(entity));
+}
+
+/// Attach an orbit camera controller.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_orbit_camera(graphics_id: u64) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| graphics_orbit_camera(graphics_entity));
+}
+
+/// Attach a free-flight camera controller.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_free_camera(graphics_id: u64) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| graphics_free_camera(graphics_entity));
+}
+
+/// Attach a pan/zoom camera controller.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_pan_camera(graphics_id: u64) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| graphics_pan_camera(graphics_entity));
+}
+
+/// Remove the active camera controller.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_disable_camera_controller(graphics_id: u64) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| graphics_disable_camera_controller(graphics_entity));
+}
+
+/// Set the camera distance from its center (zoom).
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_camera_set_distance(graphics_id: u64, distance: f32) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| camera_set_distance(graphics_entity, distance));
+}
+
+/// Set the orbit camera's look-at center.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_camera_set_center(graphics_id: u64, x: f32, y: f32, z: f32) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| camera_set_center(graphics_entity, Vec3::new(x, y, z)));
+}
+
+/// Set the minimum camera distance.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_camera_set_min_distance(graphics_id: u64, min: f32) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| camera_set_min_distance(graphics_entity, min));
+}
+
+/// Set the maximum camera distance.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_camera_set_max_distance(graphics_id: u64, max: f32) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| camera_set_max_distance(graphics_entity, max));
+}
+
+/// Set the camera controller's sensitivity.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_camera_set_speed(graphics_id: u64, speed: f32) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| camera_set_speed(graphics_entity, speed));
+}
+
+/// Reset the camera controller to its initial pose.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_camera_reset(graphics_id: u64) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| camera_reset(graphics_entity));
+}
+
+/// Position the camera at eye, looking at center with the given up.
+///
+/// An active camera controller overrides this each frame.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_camera(
+    graphics_id: u64,
+    eye_x: f32,
+    eye_y: f32,
+    eye_z: f32,
+    center_x: f32,
+    center_y: f32,
+    center_z: f32,
+    up_x: f32,
+    up_y: f32,
+    up_z: f32,
+) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| {
+        graphics_camera(
+            graphics_entity,
+            Vec3::new(eye_x, eye_y, eye_z),
+            Vec3::new(center_x, center_y, center_z),
+            Vec3::new(up_x, up_y, up_z),
+        )
+    });
+}
+
+/// A column-major 4x4 matrix.
+#[repr(C)]
+pub struct Matrix {
+    pub m: [f32; 16],
+}
+
+/// Right-multiply the model matrix by a column-major 4x4 matrix.
+///
+/// # Safety
+/// - matrix points to at least 16 f32.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn processing_apply_matrix(graphics_id: u64, matrix: *const f32) {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| {
+        // SAFETY: Caller guarantees matrix points to 16 valid f32 elements
+        let cols: [f32; 16] = unsafe { std::slice::from_raw_parts(matrix, 16) }
+            .try_into()
+            .unwrap();
+        let affine = Affine3A::from_mat4(Mat4::from_cols_array(&cols));
+        graphics_record_command(graphics_entity, DrawCommand::ApplyMatrix(affine))
+    });
+}
+
+/// The current model matrix, column-major. Flushes pending draws; identity on error.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_get_matrix(graphics_id: u64) -> Matrix {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    let m = error::check(|| graphics_get_matrix(graphics_entity).map(|mat| mat.to_cols_array()))
+        .unwrap_or_else(|| Mat4::IDENTITY.to_cols_array());
+    Matrix { m }
+}
+
+/// Model-space point to world-space X (modelX).
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_model_x(graphics_id: u64, x: f32, y: f32, z: f32) -> f32 {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| graphics_model_point(graphics_entity, Vec3::new(x, y, z)).map(|p| p.x))
+        .unwrap_or(0.0)
+}
+
+/// Model-space point to world-space Y (modelY).
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_model_y(graphics_id: u64, x: f32, y: f32, z: f32) -> f32 {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| graphics_model_point(graphics_entity, Vec3::new(x, y, z)).map(|p| p.y))
+        .unwrap_or(0.0)
+}
+
+/// Model-space point to world-space Z (modelZ).
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_model_z(graphics_id: u64, x: f32, y: f32, z: f32) -> f32 {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| graphics_model_point(graphics_entity, Vec3::new(x, y, z)).map(|p| p.z))
+        .unwrap_or(0.0)
+}
+
+/// Model-space point to screen X in pixels (screenX).
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_screen_x(graphics_id: u64, x: f32, y: f32, z: f32) -> f32 {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| graphics_screen_point(graphics_entity, Vec3::new(x, y, z)).map(|p| p.x))
+        .unwrap_or(0.0)
+}
+
+/// Model-space point to screen Y in pixels (screenY).
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_screen_y(graphics_id: u64, x: f32, y: f32, z: f32) -> f32 {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| graphics_screen_point(graphics_entity, Vec3::new(x, y, z)).map(|p| p.y))
+        .unwrap_or(0.0)
+}
+
+/// Model-space point to screen depth in [0,1] (screenZ).
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_screen_z(graphics_id: u64, x: f32, y: f32, z: f32) -> f32 {
+    error::clear_error();
+    let graphics_entity = Entity::from_bits(graphics_id);
+    error::check(|| graphics_screen_point(graphics_entity, Vec3::new(x, y, z)).map(|p| p.z))
+        .unwrap_or(0.0)
 }
 
 pub const PROCESSING_ATTR_FORMAT_FLOAT: u8 = 1;
@@ -2464,18 +3026,81 @@ pub extern "C" fn processing_compute_create(shader_id: u64) -> u64 {
 /// # Safety
 /// - `name` is a valid null-terminated C string.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn processing_compute_set_float(
-    compute_id: u64,
+pub unsafe extern "C" fn processing_shader_set_float(
+    entity: u64,
     name: *const std::ffi::c_char,
     value: f32,
 ) {
     error::clear_error();
     error::check(|| {
         let name = unsafe { cstr_to_str(name) }?;
-        compute_set(
-            Entity::from_bits(compute_id),
+        shader_set(Entity::from_bits(entity), name, ShaderValue::Float(value))
+    });
+}
+
+/// # Safety
+/// - `name` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn processing_shader_set_int(
+    entity: u64,
+    name: *const std::ffi::c_char,
+    value: i32,
+) {
+    error::clear_error();
+    error::check(|| {
+        let name = unsafe { cstr_to_str(name) }?;
+        shader_set(Entity::from_bits(entity), name, ShaderValue::Int(value))
+    });
+}
+
+/// # Safety
+/// - `name` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn processing_shader_set_uint(
+    entity: u64,
+    name: *const std::ffi::c_char,
+    value: u32,
+) {
+    error::clear_error();
+    error::check(|| {
+        let name = unsafe { cstr_to_str(name) }?;
+        shader_set(Entity::from_bits(entity), name, ShaderValue::UInt(value))
+    });
+}
+
+/// # Safety
+/// - `name` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn processing_shader_set_vec2(
+    entity: u64,
+    name: *const std::ffi::c_char,
+    x: f32,
+    y: f32,
+) {
+    error::clear_error();
+    error::check(|| {
+        let name = unsafe { cstr_to_str(name) }?;
+        shader_set(Entity::from_bits(entity), name, ShaderValue::Float2([x, y]))
+    });
+}
+
+/// # Safety
+/// - `name` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn processing_shader_set_vec3(
+    entity: u64,
+    name: *const std::ffi::c_char,
+    x: f32,
+    y: f32,
+    z: f32,
+) {
+    error::clear_error();
+    error::check(|| {
+        let name = unsafe { cstr_to_str(name) }?;
+        shader_set(
+            Entity::from_bits(entity),
             name,
-            shader_value::ShaderValue::Float(value),
+            ShaderValue::Float3([x, y, z]),
         )
     });
 }
@@ -2549,18 +3174,79 @@ pub unsafe extern "C" fn processing_compute_set_int(
 /// # Safety
 /// - `name` is a valid null-terminated C string.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn processing_compute_set_buffer(
-    compute_id: u64,
+pub unsafe extern "C" fn processing_shader_set_vec4(
+    entity: u64,
+    name: *const std::ffi::c_char,
+    x: f32,
+    y: f32,
+    z: f32,
+    w: f32,
+) {
+    error::clear_error();
+    error::check(|| {
+        let name = unsafe { cstr_to_str(name) }?;
+        shader_set(
+            Entity::from_bits(entity),
+            name,
+            ShaderValue::Float4([x, y, z, w]),
+        )
+    });
+}
+
+/// # Safety
+/// - `name` must be non-null.
+/// - `value` must point to at least 16 f32 elements (column-major).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn processing_shader_set_mat4(
+    entity: u64,
+    name: *const std::ffi::c_char,
+    value: *const f32,
+) {
+    error::clear_error();
+    error::check(|| {
+        let name = unsafe { cstr_to_str(name) }?;
+        // SAFETY: caller guarantees 16 valid f32 elements
+        let m: [f32; 16] = unsafe { std::slice::from_raw_parts(value, 16) }
+            .try_into()
+            .unwrap();
+        shader_set(Entity::from_bits(entity), name, ShaderValue::Mat4(m))
+    });
+}
+
+/// # Safety
+/// - `name` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn processing_shader_set_texture(
+    entity: u64,
+    name: *const std::ffi::c_char,
+    image_id: u64,
+) {
+    error::clear_error();
+    error::check(|| {
+        let name = unsafe { cstr_to_str(name) }?;
+        shader_set(
+            Entity::from_bits(entity),
+            name,
+            ShaderValue::Texture(Entity::from_bits(image_id)),
+        )
+    });
+}
+
+/// # Safety
+/// - `name` must be non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn processing_shader_set_buffer(
+    entity: u64,
     name: *const std::ffi::c_char,
     buf_id: u64,
 ) {
     error::clear_error();
     error::check(|| {
         let name = unsafe { cstr_to_str(name) }?;
-        compute_set(
-            Entity::from_bits(compute_id),
+        shader_set(
+            Entity::from_bits(entity),
             name,
-            shader_value::ShaderValue::Buffer(Entity::from_bits(buf_id)),
+            ShaderValue::Buffer(Entity::from_bits(buf_id)),
         )
     });
 }
@@ -3255,6 +3941,43 @@ pub extern "C" fn processing_input_cursor_leave(surface_id: u64) {
 pub extern "C" fn processing_input_focus(surface_id: u64, focused: bool) {
     error::clear_error();
     error::check(|| input_set_focus(Entity::from_bits(surface_id), focused));
+}
+
+pub const PROCESSING_CURSOR_ARROW: u8 = 0;
+pub const PROCESSING_CURSOR_CROSS: u8 = 1;
+pub const PROCESSING_CURSOR_HAND: u8 = 2;
+pub const PROCESSING_CURSOR_MOVE: u8 = 3;
+pub const PROCESSING_CURSOR_TEXT: u8 = 4;
+pub const PROCESSING_CURSOR_WAIT: u8 = 5;
+
+fn cursor_icon(kind: u8) -> bevy::window::SystemCursorIcon {
+    use bevy::window::SystemCursorIcon;
+    match kind {
+        PROCESSING_CURSOR_CROSS => SystemCursorIcon::Crosshair,
+        PROCESSING_CURSOR_HAND => SystemCursorIcon::Pointer,
+        PROCESSING_CURSOR_MOVE => SystemCursorIcon::Move,
+        PROCESSING_CURSOR_TEXT => SystemCursorIcon::Text,
+        PROCESSING_CURSOR_WAIT => SystemCursorIcon::Wait,
+        _ => SystemCursorIcon::Default,
+    }
+}
+
+/// Show the mouse cursor with the given system type (PROCESSING_CURSOR_*).
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_cursor(surface_id: u64, kind: u8) {
+    error::clear_error();
+    let surface = Entity::from_bits(surface_id);
+    error::check(|| {
+        input_set_cursor_visible(surface, true)?;
+        input_set_cursor_icon(surface, cursor_icon(kind))
+    });
+}
+
+/// Hide the mouse cursor.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_no_cursor(surface_id: u64) {
+    error::clear_error();
+    error::check(|| input_set_cursor_visible(Entity::from_bits(surface_id), false));
 }
 
 #[unsafe(no_mangle)]

@@ -1,6 +1,6 @@
 [package]
 name = "processing_render"
-version = "0.0.1"
+version = "0.0.5"
 edition = "2024"
 
 [lints]
@@ -18,6 +18,8 @@ naga = { workspace = true }
 wesl = { workspace = true }
 lyon = "1.0"
 parley = { version = "0.7", features = ["system"] }
+# dlopen fontconfig at runtime instead of linking it, so Linux wheels stay manylinux-compliant
+fontique = { version = "0.7", features = ["fontconfig-dlopen"] }
 skrifa = "0.37"
 notosans = "0.1"
 raw-window-handle = "0.6"
@@ -27,6 +29,9 @@ processing_core = { workspace = true }
 
 [build-dependencies]
 wesl = { workspace = true, features = ["package"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+bevy = { workspace = true, features = ["file_watcher"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = { version = "0.6", default-features = false }
