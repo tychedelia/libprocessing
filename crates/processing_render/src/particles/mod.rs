@@ -39,7 +39,7 @@ use processing_core::app_mut;
 use processing_core::error::{self, ProcessingError, Result};
 
 use crate::compute;
-use crate::geometry::{Attribute, AttributeFormat, Geometry};
+use crate::geometry::{Attribute, AttributeFormat, Geometry, default_attribute_init};
 
 pub struct ParticlesPlugin;
 
@@ -243,49 +243,105 @@ pub fn destroy(
     Ok(())
 }
 
-pub fn add_attribute(
-    In((particles_entity, attribute_entity, default_bytes)): In<(Entity, Entity, Vec<u8>)>,
+/// Seeding + duplicate policy for materializing an attribute buffer on an
+/// existing field. Both the lazy (kernel-driven) and explicit (user-declared)
+/// paths funnel through [`materialize_attribute`] with one of these.
+pub enum AttributeSeed {
+    /// Idempotent lazy path: if an attribute of the same name is already
+    /// attached, return its buffer unchanged; otherwise allocate one seeded by
+    /// the name's canonical convention ([`default_attribute_init`]).
+    Ensure,
+    /// Explicit declaration: error if the attribute is already attached.
+    /// `Some(bytes)` seeds every slot with those per-element bytes (must match
+    /// the attribute's format); `None` falls back to the name's convention —
+    /// so an explicitly-added `color` starts white, exactly like a lazy one.
+    Declare(Option<Vec<u8>>),
+}
+
+/// Repeat one element's worth of `per_element` bytes `capacity` times.
+fn tile_seed(per_element: &[u8], capacity: usize) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(capacity * per_element.len());
+    for _ in 0..capacity {
+        bytes.extend_from_slice(per_element);
+    }
+    bytes
+}
+
+/// One element's canonical seed as raw little-endian bytes.
+fn convention_seed_bytes(name: &str, format: AttributeFormat) -> Vec<u8> {
+    default_attribute_init(name, format)
+        .iter()
+        .flat_map(|f| f.to_le_bytes())
+        .collect()
+}
+
+/// Materialize an attribute buffer on an existing field. This is the single
+/// allocator behind both [`particles_ensure_attribute`] (lazy) and
+/// [`particles_attribute_add`] (explicit); the `seed` decides the duplicate
+/// policy and initial contents. Returns the attribute's buffer entity.
+pub fn materialize_attribute(
+    In((particles_entity, attribute_entity, seed)): In<(Entity, Entity, AttributeSeed)>,
     mut commands: Commands,
     mut particles_q: Query<&mut Particles>,
     attributes: Query<&Attribute>,
     mut shader_buffers: ResMut<Assets<ShaderBuffer>>,
     render_device: Res<RenderDevice>,
-) -> Result<()> {
-    let mut particles = particles_q
-        .get_mut(particles_entity)
-        .map_err(|_| ProcessingError::ParticlesNotFound)?;
-    if particles.buffers.contains_key(&attribute_entity) {
-        return Err(ProcessingError::InvalidArgument(format!(
-            "particles already have attribute {attribute_entity:?}"
-        )));
-    }
+) -> Result<Entity> {
     let attr = attributes
         .get(attribute_entity)
-        .map_err(|_| ProcessingError::InvalidEntity)?;
-    let elem_size = attr.format.byte_size() as usize;
-    let capacity = particles.capacity as usize;
-    let byte_size = capacity * elem_size;
+        .map_err(|_| ProcessingError::InvalidEntity)?
+        .clone();
 
-    let initial = if default_bytes.is_empty() {
-        vec![0u8; byte_size]
-    } else if default_bytes.len() != elem_size {
-        return Err(ProcessingError::InvalidArgument(format!(
-            "default value byte size {} does not match attribute '{}' format byte size {}",
-            default_bytes.len(),
-            attr.name,
-            elem_size,
-        )));
-    } else {
-        let mut bytes = Vec::with_capacity(byte_size);
-        for _ in 0..capacity {
-            bytes.extend_from_slice(&default_bytes);
+    // Presence check. Match by name (not just entity) so a system seeded from
+    // geometry — or a custom attribute sharing a builtin's name — isn't
+    // duplicated. `Ensure` returns the existing buffer; `Declare` errors.
+    let capacity = {
+        let particles = particles_q
+            .get(particles_entity)
+            .map_err(|_| ProcessingError::ParticlesNotFound)?;
+        let existing = particles.buffers.get(&attribute_entity).copied().or_else(|| {
+            particles.buffers.iter().find_map(|(&e, &buf)| {
+                (attributes.get(e).map(|a| a.name) == Ok(attr.name)).then_some(buf)
+            })
+        });
+        if let Some(buf) = existing {
+            return match seed {
+                AttributeSeed::Ensure => Ok(buf),
+                AttributeSeed::Declare(_) => Err(ProcessingError::InvalidArgument(format!(
+                    "particles already have attribute '{}'",
+                    attr.name
+                ))),
+            };
         }
-        bytes
+        particles.capacity as usize
     };
 
+    let elem_size = attr.format.byte_size();
+    let per_element = match &seed {
+        AttributeSeed::Declare(Some(default_bytes)) => {
+            if default_bytes.len() != elem_size {
+                return Err(ProcessingError::InvalidArgument(format!(
+                    "default value byte size {} does not match attribute '{}' format byte size {}",
+                    default_bytes.len(),
+                    attr.name,
+                    elem_size,
+                )));
+            }
+            default_bytes.clone()
+        }
+        AttributeSeed::Ensure | AttributeSeed::Declare(None) => {
+            convention_seed_bytes(attr.name, attr.format)
+        }
+    };
+
+    let initial = tile_seed(&per_element, capacity);
     let buffer_entity = make_buffer(&mut commands, &mut shader_buffers, &render_device, &initial);
-    particles.buffers.insert(attribute_entity, buffer_entity);
-    Ok(())
+    particles_q
+        .get_mut(particles_entity)
+        .map_err(|_| ProcessingError::ParticlesNotFound)?
+        .buffers
+        .insert(attribute_entity, buffer_entity);
+    Ok(buffer_entity)
 }
 
 pub fn particles_create(
@@ -344,31 +400,57 @@ pub fn particles_buffer(
     })
 }
 
-/// Add an attribute to an existing particle field, allocating its per-particle
-/// buffer (sized to the field's capacity) and optionally seeding every slot
-/// with `default`. Pass `None` to zero-initialize. Errors if the attribute is
-/// already attached to this field, or if `default`'s type doesn't match the
-/// attribute's format.
+/// Lazily materialize an attribute buffer on an existing field, seeded by the
+/// name's canonical convention ([`default_attribute_init`]). Idempotent: a
+/// no-op returning the existing buffer if an attribute of the same name is
+/// already attached. This is what lets a bare `position`-only system grow the
+/// attributes its kernels need — [`particles_apply`] calls it for every entry
+/// in a kernel's [`KernelRequires`](kernels::KernelRequires) manifest.
+pub fn particles_ensure_attribute(
+    particles_entity: Entity,
+    attribute_entity: Entity,
+) -> error::Result<Entity> {
+    app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(
+                materialize_attribute,
+                (particles_entity, attribute_entity, AttributeSeed::Ensure),
+            )
+            .unwrap()
+    })
+}
+
+/// Explicitly add an attribute to an existing particle field, allocating its
+/// per-particle buffer (sized to the field's capacity). `default` seeds every
+/// slot (its type must match the attribute's format); `None` falls back to the
+/// name's canonical convention ([`default_attribute_init`]) — so an explicitly
+/// added `color` starts white, matching lazy materialization. Errors if the
+/// attribute is already attached to this field.
 pub fn particles_attribute_add(
     particles_entity: Entity,
     attribute_entity: Entity,
     default: Option<crate::shader_value::ShaderValue>,
 ) -> error::Result<()> {
     let default_bytes = match default {
-        None => Vec::new(),
-        Some(v) => v.to_bytes().ok_or_else(|| {
+        None => None,
+        Some(v) => Some(v.to_bytes().ok_or_else(|| {
             error::ProcessingError::InvalidArgument(
                 "default must be a scalar/vector ShaderValue, not a Buffer/Texture/Mesh*"
                     .to_string(),
             )
-        })?,
+        })?),
     };
     app_mut(|app| {
         app.world_mut()
             .run_system_cached_with(
-                add_attribute,
-                (particles_entity, attribute_entity, default_bytes),
+                materialize_attribute,
+                (
+                    particles_entity,
+                    attribute_entity,
+                    AttributeSeed::Declare(default_bytes),
+                ),
             )
             .unwrap()
+            .map(|_| ())
     })
 }

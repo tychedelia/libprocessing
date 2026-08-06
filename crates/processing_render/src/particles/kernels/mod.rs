@@ -8,9 +8,32 @@ use bevy::prelude::*;
 use processing_core::app_mut;
 use processing_core::error::{self, ProcessingError};
 
-use crate::geometry::Geometry;
+use crate::geometry::{BuiltinAttributes, Geometry};
 use crate::shader_value::ShaderValue;
 use crate::{compute_create, compute_set, shader_load};
+
+/// The registered attributes a built-in kernel reads or writes.
+/// [`particles_apply`](super::particles_apply) materializes any that are
+/// missing before dispatch, so a bare `position`-only system grows exactly the
+/// attributes its kernels touch. Unregistered names a kernel may also use
+/// (e.g. a `field` kernel's output `weight`) are intentionally left out — those
+/// stay the user's explicit responsibility.
+#[derive(Component, Default, Clone)]
+pub struct KernelRequires(pub Vec<Entity>);
+
+/// Tag `compute` with the registered attributes it needs. Names outside the
+/// builtin registry are silently dropped (they can't be auto-materialized).
+fn set_requires(compute: Entity, names: &[&str]) -> error::Result<()> {
+    app_mut(|app| {
+        let world = app.world_mut();
+        let attrs: Vec<Entity> = {
+            let builtins = world.resource::<BuiltinAttributes>();
+            names.iter().filter_map(|n| builtins.by_name(n)).collect()
+        };
+        world.entity_mut(compute).insert(KernelRequires(attrs));
+        Ok(())
+    })
+}
 
 pub struct ParticlesKernelsPlugin;
 
@@ -85,6 +108,7 @@ pub const COMBINE_POW: u32 = 6;
 pub fn particles_kernel_noise() -> error::Result<Entity> {
     let shader = shader_load("embedded://processing_render/particles/kernels/noise.wgsl")?;
     let entity = compute_create(shader)?;
+    set_requires(entity, &["position"])?;
     compute_set(entity, "divergence_free", ShaderValue::UInt(0))?;
     Ok(entity)
 }
@@ -96,6 +120,7 @@ pub fn particles_kernel_noise() -> error::Result<Entity> {
 pub fn particles_kernel_transform() -> error::Result<Entity> {
     let shader = shader_load("embedded://processing_render/particles/kernels/transform.wgsl")?;
     let entity = compute_create(shader)?;
+    set_requires(entity, &["position"])?;
     compute_set(entity, "translate", ShaderValue::Float3([0.0; 3]))?;
     compute_set(
         entity,
@@ -114,6 +139,7 @@ pub fn particles_kernel_transform() -> error::Result<Entity> {
 pub fn particles_kernel_attract() -> error::Result<Entity> {
     let shader = shader_load("embedded://processing_render/particles/kernels/attract.wgsl")?;
     let entity = compute_create(shader)?;
+    set_requires(entity, &["position", "velocity"])?;
     compute_set(entity, "center", ShaderValue::Float3([0.0; 3]))?;
     compute_set(entity, "strength", ShaderValue::Float(0.0))?;
     compute_set(entity, "radius", ShaderValue::Float(1.0))?;
@@ -127,6 +153,7 @@ pub fn particles_kernel_attract() -> error::Result<Entity> {
 pub fn particles_kernel_drag() -> error::Result<Entity> {
     let shader = shader_load("embedded://processing_render/particles/kernels/drag.wgsl")?;
     let entity = compute_create(shader)?;
+    set_requires(entity, &["velocity"])?;
     compute_set(entity, "damping", ShaderValue::Float(0.0))?;
     compute_set(entity, "max_speed", ShaderValue::Float(0.0))?;
     Ok(entity)
@@ -139,6 +166,7 @@ pub fn particles_kernel_drag() -> error::Result<Entity> {
 pub fn particles_kernel_force() -> error::Result<Entity> {
     let shader = shader_load("embedded://processing_render/particles/kernels/force.wgsl")?;
     let entity = compute_create(shader)?;
+    set_requires(entity, &["velocity"])?;
     compute_set(entity, "direction", ShaderValue::Float3([0.0, -1.0, 0.0]))?;
     compute_set(entity, "strength", ShaderValue::Float(0.0))?;
     Ok(entity)
@@ -151,6 +179,7 @@ pub fn particles_kernel_integrate() -> error::Result<Entity> {
     let shader =
         shader_load("embedded://processing_render/particles/kernels/integrate.wgsl")?;
     let entity = compute_create(shader)?;
+    set_requires(entity, &["position", "velocity"])?;
     compute_set(entity, "dt", ShaderValue::Float(1.0))?;
     Ok(entity)
 }
@@ -162,6 +191,7 @@ pub fn particles_kernel_integrate() -> error::Result<Entity> {
 pub fn particles_kernel_age() -> error::Result<Entity> {
     let shader = shader_load("embedded://processing_render/particles/kernels/age.wgsl")?;
     let entity = compute_create(shader)?;
+    set_requires(entity, &["age", "life"])?;
     compute_set(entity, "dt", ShaderValue::Float(1.0))?;
     Ok(entity)
 }
@@ -172,6 +202,7 @@ pub fn particles_kernel_age() -> error::Result<Entity> {
 pub fn particles_kernel_vortex() -> error::Result<Entity> {
     let shader = shader_load("embedded://processing_render/particles/kernels/vortex.wgsl")?;
     let entity = compute_create(shader)?;
+    set_requires(entity, &["position", "velocity"])?;
     compute_set(entity, "center", ShaderValue::Float3([0.0; 3]))?;
     compute_set(entity, "axis", ShaderValue::Float3([0.0, 1.0, 0.0]))?;
     compute_set(entity, "strength", ShaderValue::Float(0.0))?;
@@ -188,6 +219,7 @@ pub fn particles_kernel_bounds_sphere() -> error::Result<Entity> {
     let shader =
         shader_load("embedded://processing_render/particles/kernels/bounds_sphere.wgsl")?;
     let entity = compute_create(shader)?;
+    set_requires(entity, &["position", "velocity"])?;
     compute_set(entity, "center", ShaderValue::Float3([0.0; 3]))?;
     compute_set(entity, "radius", ShaderValue::Float(1.0))?;
     compute_set(entity, "mode", ShaderValue::UInt(BOUNDS_SOFT))?;
@@ -205,6 +237,7 @@ pub fn particles_kernel_bounds_box() -> error::Result<Entity> {
     let shader =
         shader_load("embedded://processing_render/particles/kernels/bounds_box.wgsl")?;
     let entity = compute_create(shader)?;
+    set_requires(entity, &["position", "velocity"])?;
     compute_set(entity, "aabb_min", ShaderValue::Float3([-1.0, -1.0, -1.0]))?;
     compute_set(entity, "aabb_max", ShaderValue::Float3([1.0, 1.0, 1.0]))?;
     compute_set(entity, "mode", ShaderValue::UInt(BOUNDS_SOFT))?;
@@ -272,6 +305,7 @@ fn extract_geometry_aabb(
 pub fn particles_kernel_impulse() -> error::Result<Entity> {
     let shader = shader_load("embedded://processing_render/particles/kernels/impulse.wgsl")?;
     let entity = compute_create(shader)?;
+    set_requires(entity, &["position", "velocity"])?;
     compute_set(entity, "center", ShaderValue::Float3([0.0; 3]))?;
     compute_set(entity, "radius", ShaderValue::Float(1.0))?;
     compute_set(entity, "position_kick", ShaderValue::Float(0.0))?;
@@ -283,6 +317,7 @@ pub fn particles_kernel_impulse() -> error::Result<Entity> {
 pub fn particles_kernel_flock() -> error::Result<Entity> {
     let shader = shader_load("embedded://processing_render/particles/kernels/flock.wgsl")?;
     let entity = compute_create(shader)?;
+    set_requires(entity, &["position", "velocity"])?;
     compute_set(entity, "sep_distance", ShaderValue::Float(1.2))?;
     compute_set(entity, "neighbor_distance", ShaderValue::Float(2.5))?;
     compute_set(entity, "weight_separation", ShaderValue::Float(1.5))?;
@@ -301,6 +336,7 @@ pub fn particles_kernel_flock() -> error::Result<Entity> {
 pub fn particles_kernel_orient() -> error::Result<Entity> {
     let shader = shader_load("embedded://processing_render/particles/kernels/orient.wgsl")?;
     let entity = compute_create(shader)?;
+    set_requires(entity, &["velocity", "rotation"])?;
     compute_set(entity, "forward", ShaderValue::Float3([0.0, 0.0, 1.0]))?;
     compute_set(entity, "up", ShaderValue::Float3([0.0, 1.0, 0.0]))?;
     Ok(entity)
@@ -309,6 +345,7 @@ pub fn particles_kernel_orient() -> error::Result<Entity> {
 pub fn particles_kernel_field() -> error::Result<Entity> {
     let shader = shader_load("embedded://processing_render/particles/kernels/field.wgsl")?;
     let entity = compute_create(shader)?;
+    set_requires(entity, &["position"])?;
     compute_set(entity, "center", ShaderValue::Float3([0.0; 3]))?;
     compute_set(entity, "radius", ShaderValue::Float(1.0))?;
     compute_set(entity, "falloff_mode", ShaderValue::UInt(FALLOFF_SMOOTHSTEP))?;

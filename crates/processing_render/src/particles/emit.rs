@@ -6,7 +6,8 @@ use processing_core::app_mut;
 use processing_core::error;
 
 use crate::geometry;
-use crate::particles::Particles;
+use crate::particles::kernels::KernelRequires;
+use crate::particles::{Particles, particles_ensure_attribute};
 use crate::shader_value::ShaderValue;
 use crate::{buffer_write_element, compute_dispatch, compute_set};
 
@@ -151,6 +152,21 @@ pub fn particles_emit(
 /// binds each attribute buffer by name; the kernel only sees the ones it
 /// declares.
 pub fn particles_apply(particles_entity: Entity, compute_entity: Entity) -> error::Result<()> {
+    // Lazy init: grow the system with any registered attributes this kernel's
+    // manifest declares but the system doesn't yet carry. Custom computes have
+    // no `KernelRequires`, so this is a no-op for them — they bind only the
+    // attributes that already exist (the intersection).
+    let required: Vec<Entity> = app_mut(|app| {
+        Ok(app
+            .world()
+            .get::<KernelRequires>(compute_entity)
+            .map(|r| r.0.clone())
+            .unwrap_or_default())
+    })?;
+    for attr_entity in required {
+        particles_ensure_attribute(particles_entity, attr_entity)?;
+    }
+
     let (capacity, buffers) = app_mut(|app| {
         let world = app.world();
         let field = world
