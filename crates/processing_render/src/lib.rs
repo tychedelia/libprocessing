@@ -1162,6 +1162,20 @@ pub fn geometry_attribute_life() -> Entity {
     app_mut(|app| Ok(app.world().resource::<geometry::BuiltinAttributes>().life)).unwrap()
 }
 
+pub fn geometry_attribute_velocity() -> Entity {
+    app_mut(|app| {
+        Ok(app
+            .world()
+            .resource::<geometry::BuiltinAttributes>()
+            .velocity)
+    })
+    .unwrap()
+}
+
+pub fn geometry_attribute_age() -> Entity {
+    app_mut(|app| Ok(app.world().resource::<geometry::BuiltinAttributes>().age)).unwrap()
+}
+
 pub fn geometry_attribute_destroy(entity: Entity) -> error::Result<()> {
     app_mut(|app| {
         app.world_mut()

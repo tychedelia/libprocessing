@@ -157,6 +157,11 @@ impl AttributeFormat {
         }
     }
 
+    /// Number of `f32` components in one element (1..=4).
+    pub fn components(self) -> usize {
+        self.byte_size() / 4
+    }
+
     pub fn from_u8(value: u8) -> Option<Self> {
         match value {
             1 => Some(Self::Float),
@@ -233,6 +238,11 @@ pub struct BuiltinAttributes {
     /// `MeshCullingData::life`. Zero-init buffers thus start fully culled —
     /// natural for ring-buffer slots that haven't been emitted into yet.
     pub life: Entity,
+    /// Per-particle velocity `(x, y, z)`. Field-only. Read/written by the
+    /// motion kernels (`force`, `integrate`, `flock`, …).
+    pub velocity: Entity,
+    /// Per-particle age in seconds. Field-only. Advanced by the `age` kernel.
+    pub age: Entity,
 }
 
 impl FromWorld for BuiltinAttributes {
@@ -274,6 +284,12 @@ impl FromWorld for BuiltinAttributes {
         let life = world
             .spawn(Attribute::new("life", AttributeFormat::Float))
             .id();
+        let velocity = world
+            .spawn(Attribute::new("velocity", AttributeFormat::Float3))
+            .id();
+        let age = world
+            .spawn(Attribute::new("age", AttributeFormat::Float))
+            .id();
 
         Self {
             position,
@@ -283,7 +299,45 @@ impl FromWorld for BuiltinAttributes {
             rotation,
             scale,
             life,
+            velocity,
+            age,
         }
+    }
+}
+
+impl BuiltinAttributes {
+    /// The registered attribute entity for a well-known name, if any. This is
+    /// the closed vocabulary that may be materialized lazily (by kernels that
+    /// need it) — anything outside it must be declared explicitly.
+    pub fn by_name(&self, name: &str) -> Option<Entity> {
+        Some(match name {
+            "position" => self.position,
+            "normal" => self.normal,
+            "color" => self.color,
+            "uv" => self.uv,
+            "rotation" => self.rotation,
+            "scale" => self.scale,
+            "life" => self.life,
+            "velocity" => self.velocity,
+            "age" => self.age,
+            _ => return None,
+        })
+    }
+}
+
+/// Canonical seed value for a freshly materialized attribute buffer — one
+/// element's worth of floats (length == `format`'s component count). These are
+/// the conventions of the *name*, not an opinion baked into every particle:
+/// a `life` that comes into existence starts alive, a `color` starts white.
+/// Unknown names seed to zero.
+pub fn default_attribute_init(name: &str, format: AttributeFormat) -> Vec<f32> {
+    match name {
+        "life" => vec![1.0],
+        "scale" => vec![1.0, 1.0, 1.0],
+        "color" => vec![1.0, 1.0, 1.0, 1.0],
+        "rotation" => vec![0.0, 0.0, 0.0, 1.0], // identity quaternion
+        // position, velocity, age, normal, uv, and custom attributes → zero
+        _ => vec![0.0; format.components()],
     }
 }
 

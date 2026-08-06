@@ -1899,6 +1899,16 @@ pub extern "C" fn processing_geometry_attribute_life() -> u64 {
     geometry_attribute_life().to_bits()
 }
 
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_geometry_attribute_velocity() -> u64 {
+    geometry_attribute_velocity().to_bits()
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_geometry_attribute_age() -> u64 {
+    geometry_attribute_age().to_bits()
+}
+
 /// Returns 1=Float, 2=Float2, 3=Float3, 4=Float4, or 0 on error.
 #[unsafe(no_mangle)]
 pub extern "C" fn processing_geometry_attribute_format(attr_id: u64) -> u8 {
