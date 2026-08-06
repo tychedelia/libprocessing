@@ -2279,6 +2279,15 @@ pub extern "C" fn processing_material_create_pbr() -> u64 {
         .unwrap_or(0)
 }
 
+/// Create a custom material backed by the given shader.
+#[unsafe(no_mangle)]
+pub extern "C" fn processing_material_create_custom(shader_id: u64) -> u64 {
+    error::clear_error();
+    error::check(|| material_create_custom(Entity::from_bits(shader_id)))
+        .map(|e| e.to_bits())
+        .unwrap_or(0)
+}
+
 /// Set a float field on a material.
 ///
 /// # Safety
