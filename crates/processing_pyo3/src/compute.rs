@@ -29,6 +29,14 @@ impl Buffer {
             borrowed: true,
         }
     }
+
+    /// Components per element (1..=4) from the buffer's element type, if typed.
+    pub(crate) fn components(&self) -> Option<u32> {
+        self.element_type
+            .as_ref()
+            .and_then(|et| et.byte_size())
+            .map(|s| (s / 4) as u32)
+    }
 }
 
 impl Buffer {
@@ -168,6 +176,27 @@ impl Buffer {
             .collect::<PyResult<Vec<_>>>()?;
 
         Ok(PyList::new(py, values)?.into_any())
+    }
+
+    /// Reduce this `f32` buffer to a single value on the GPU and read it back:
+    /// `op` is `SUM`, `MIN`, or `MAX`. (For per-component stats of a vec buffer,
+    /// extract a component first.)
+    #[pyo3(signature = (op = "sum"))]
+    pub fn reduce(&self, op: &str) -> PyResult<f32> {
+        use processing::prelude::constants as c;
+        use processing_render::particles::reduce::{
+            REDUCE_OP_MAX, REDUCE_OP_MIN, REDUCE_OP_SUM, reduce as reduce_buffer,
+        };
+        let mode = if op.eq_ignore_ascii_case(c::SUM) {
+            REDUCE_OP_SUM
+        } else if op.eq_ignore_ascii_case(c::MIN) {
+            REDUCE_OP_MIN
+        } else if op.eq_ignore_ascii_case(c::MAX) {
+            REDUCE_OP_MAX
+        } else {
+            return Err(PyValueError::new_err(format!("reduce: unknown op {op:?}")));
+        };
+        reduce_buffer(self.entity, mode).map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 }
 

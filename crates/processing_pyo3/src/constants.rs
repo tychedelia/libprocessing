@@ -48,6 +48,20 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m, PI, TWO_PI, HALF_PI, QUARTER_PI, TAU, DEG_TO_RAD, RAD_TO_DEG
     );
 
+    // Particle operations for `Particles.apply(...)` (verbs + op= modes).
+    add!(m, MAP, COMBINE, MIX, LOOKUP, REDUCE, EXTRACT, PACK, GENERATE);
+    add!(m, AFFINE, ABS, NEGATE, FLOOR, SQRT); // map modes (also CLAMP, SQUARE)
+    add!(m, GREATER, LESS, GEQ, LEQ, EQ, NEQ); // map comparison / group predicates
+    // combine modes; `ADD` is grouped with its first use (blend modes, below),
+    // and combine reuses the "add" string through it.
+    add!(m, SUB, MUL, DIV, POW);
+    add!(m, LENGTH, SUM, SUMSQ, MEAN, MIN, MAX); // reduce modes (+ combine MIN/MAX)
+    add!(m, UNIFORM, SIGNED, GAUSSIAN); // generate modes
+    add!(
+        m, NOISE, TRANSFORM, ATTRACT, DRAG, VORTEX, FORCE, INTEGRATE, AGE, IMPULSE, ORIENT, FIELD,
+        BOUNDS_SPHERE, BOUNDS_BOX
+    );
+
     add!(
         m, KEY_A, KEY_B, KEY_C, KEY_D, KEY_E, KEY_F, KEY_G, KEY_H, KEY_I, KEY_J, KEY_K, KEY_L,
         KEY_M, KEY_N, KEY_O, KEY_P, KEY_Q, KEY_R, KEY_S, KEY_T, KEY_U, KEY_V, KEY_W, KEY_X, KEY_Y,

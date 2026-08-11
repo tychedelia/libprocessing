@@ -8,8 +8,214 @@ use pyo3::{
 };
 use std::collections::HashMap;
 
+use processing_render::particles::algebra::{
+    combine as algebra_combine, extract as algebra_extract, generate as algebra_generate,
+    lookup as algebra_lookup, map as algebra_map, mix as algebra_mix, pack as algebra_pack,
+    reduce_components as algebra_reduce,
+};
+use processing_render::particles::compact::compact as compact_indices;
+
 use crate::compute::{Buffer, Compute};
-use crate::graphics::Geometry;
+use crate::graphics::{Geometry, Image};
+
+use processing::prelude::constants as c;
+use processing_render::{
+    MAP_ABS, MAP_AFFINE, MAP_CLAMP, MAP_EQ, MAP_FLOOR, MAP_GEQ, MAP_GREATER, MAP_LEQ, MAP_LESS,
+    MAP_NEGATE, MAP_NEQ, MAP_SQRT, MAP_SQUARE,
+};
+use processing_render::{
+    COMBINE_ADD, COMBINE_DIV, COMBINE_MAX, COMBINE_MIN, COMBINE_MUL, COMBINE_POW, COMBINE_SUB,
+};
+use processing_render::{GEN_GAUSSIAN, GEN_SIGNED, GEN_UNIFORM};
+use processing_render::{
+    REDUCE_LENGTH, REDUCE_MAX, REDUCE_MEAN, REDUCE_MIN, REDUCE_SUM, REDUCE_SUMSQ,
+};
+
+/// Parse a `op=` mode string into the internal `map` op code.
+fn parse_map_op(s: &str) -> PyResult<u32> {
+    match () {
+        _ if s.eq_ignore_ascii_case(c::AFFINE) => Ok(MAP_AFFINE),
+        _ if s.eq_ignore_ascii_case(c::ABS) => Ok(MAP_ABS),
+        _ if s.eq_ignore_ascii_case(c::NEGATE) => Ok(MAP_NEGATE),
+        _ if s.eq_ignore_ascii_case(c::CLAMP) => Ok(MAP_CLAMP),
+        _ if s.eq_ignore_ascii_case(c::FLOOR) => Ok(MAP_FLOOR),
+        _ if s.eq_ignore_ascii_case(c::SQUARE) => Ok(MAP_SQUARE),
+        _ if s.eq_ignore_ascii_case(c::SQRT) => Ok(MAP_SQRT),
+        _ if s.eq_ignore_ascii_case(c::GREATER) => Ok(MAP_GREATER),
+        _ if s.eq_ignore_ascii_case(c::LESS) => Ok(MAP_LESS),
+        _ if s.eq_ignore_ascii_case(c::GEQ) => Ok(MAP_GEQ),
+        _ if s.eq_ignore_ascii_case(c::LEQ) => Ok(MAP_LEQ),
+        _ if s.eq_ignore_ascii_case(c::EQ) => Ok(MAP_EQ),
+        _ if s.eq_ignore_ascii_case(c::NEQ) => Ok(MAP_NEQ),
+        _ => Err(PyValueError::new_err(format!("map: unknown op {s:?}"))),
+    }
+}
+
+fn parse_combine_op(s: &str) -> PyResult<u32> {
+    match () {
+        _ if s.eq_ignore_ascii_case(c::ADD) => Ok(COMBINE_ADD),
+        _ if s.eq_ignore_ascii_case(c::SUB) => Ok(COMBINE_SUB),
+        _ if s.eq_ignore_ascii_case(c::MUL) => Ok(COMBINE_MUL),
+        _ if s.eq_ignore_ascii_case(c::DIV) => Ok(COMBINE_DIV),
+        _ if s.eq_ignore_ascii_case(c::MIN) => Ok(COMBINE_MIN),
+        _ if s.eq_ignore_ascii_case(c::MAX) => Ok(COMBINE_MAX),
+        _ if s.eq_ignore_ascii_case(c::POW) => Ok(COMBINE_POW),
+        _ => Err(PyValueError::new_err(format!("combine: unknown op {s:?}"))),
+    }
+}
+
+fn parse_reduce_op(s: &str) -> PyResult<u32> {
+    match () {
+        _ if s.eq_ignore_ascii_case(c::LENGTH) => Ok(REDUCE_LENGTH),
+        _ if s.eq_ignore_ascii_case(c::SUM) => Ok(REDUCE_SUM),
+        _ if s.eq_ignore_ascii_case(c::MIN) => Ok(REDUCE_MIN),
+        _ if s.eq_ignore_ascii_case(c::MAX) => Ok(REDUCE_MAX),
+        _ if s.eq_ignore_ascii_case(c::SUMSQ) => Ok(REDUCE_SUMSQ),
+        _ if s.eq_ignore_ascii_case(c::MEAN) => Ok(REDUCE_MEAN),
+        _ => Err(PyValueError::new_err(format!("reduce: unknown op {s:?}"))),
+    }
+}
+
+fn parse_generate_mode(s: &str) -> PyResult<u32> {
+    match () {
+        _ if s.eq_ignore_ascii_case(c::UNIFORM) => Ok(GEN_UNIFORM),
+        _ if s.eq_ignore_ascii_case(c::SIGNED) => Ok(GEN_SIGNED),
+        _ if s.eq_ignore_ascii_case(c::GAUSSIAN) => Ok(GEN_GAUSSIAN),
+        _ => Err(PyValueError::new_err(format!("generate: unknown mode {s:?}"))),
+    }
+}
+
+/// A spatial hash grid for a particle system — the O(N) neighbourhood structure
+/// behind `p.flock(...)`. Create with `p.create_grid(...)`; rebuilt each frame
+/// inside `flock`.
+#[pyclass(unsendable)]
+pub struct Grid {
+    pub(crate) inner: processing_render::particles::grid::Grid,
+}
+
+/// The grid-accelerated flock kernel, compiled once and reused.
+static FLOCK_COMPUTE: std::sync::Mutex<Option<Entity>> = std::sync::Mutex::new(None);
+
+fn flock_compute() -> PyResult<Entity> {
+    let mut guard = FLOCK_COMPUTE.lock().unwrap();
+    if let Some(e) = *guard {
+        return Ok(e);
+    }
+    let e = particles_kernel_flock().map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+    *guard = Some(e);
+    Ok(e)
+}
+
+/// Built-in simulation kernels are compiled once and reused across `apply(...)`
+/// calls (their per-call params are set on the shared uniform right before each
+/// dispatch; the render queue serialises upload-then-dispatch so this is safe).
+static PHYSICS_COMPUTES: std::sync::Mutex<Option<HashMap<String, Entity>>> =
+    std::sync::Mutex::new(None);
+
+/// Resolve a simulation-kernel op name to its cached compute entity, creating it
+/// on first use. Returns `None` if `name` is not a (no-argument) built-in kernel.
+fn physics_compute(name: &str) -> PyResult<Option<Entity>> {
+    let lower = name.to_ascii_lowercase();
+    if let Some(cache) = PHYSICS_COMPUTES.lock().unwrap().as_ref() {
+        if let Some(&e) = cache.get(&lower) {
+            return Ok(Some(e));
+        }
+    }
+    let created = if lower == c::NOISE {
+        particles_kernel_noise()
+    } else if lower == c::TRANSFORM {
+        particles_kernel_transform()
+    } else if lower == c::ATTRACT {
+        particles_kernel_attract()
+    } else if lower == c::DRAG {
+        particles_kernel_drag()
+    } else if lower == c::VORTEX {
+        particles_kernel_vortex()
+    } else if lower == c::FORCE {
+        particles_kernel_force()
+    } else if lower == c::INTEGRATE {
+        particles_kernel_integrate()
+    } else if lower == c::AGE {
+        particles_kernel_age()
+    } else if lower == c::IMPULSE {
+        particles_kernel_impulse()
+    } else if lower == c::ORIENT {
+        particles_kernel_orient()
+    } else if lower == c::FIELD {
+        particles_kernel_field()
+    } else if lower == c::BOUNDS_SPHERE {
+        particles_kernel_bounds_sphere()
+    } else if lower == c::BOUNDS_BOX {
+        particles_kernel_bounds_box()
+    } else {
+        return Ok(None);
+    };
+    let entity = created.map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+    PHYSICS_COMPUTES
+        .lock()
+        .unwrap()
+        .get_or_insert_with(HashMap::new)
+        .insert(lower, entity);
+    Ok(Some(entity))
+}
+
+fn kw<'a>(kwargs: Option<&Bound<'a, PyDict>>, key: &str) -> Option<Bound<'a, PyAny>> {
+    kwargs.and_then(|d| d.get_item(key).ok().flatten())
+}
+
+fn kw_f32(kwargs: Option<&Bound<'_, PyDict>>, key: &str, default: f32) -> PyResult<f32> {
+    match kw(kwargs, key) {
+        Some(v) => v.extract(),
+        None => Ok(default),
+    }
+}
+
+fn kw_u32(kwargs: Option<&Bound<'_, PyDict>>, key: &str, default: u32) -> PyResult<u32> {
+    match kw(kwargs, key) {
+        Some(v) => v.extract(),
+        None => Ok(default),
+    }
+}
+
+fn kw_bool(kwargs: Option<&Bound<'_, PyDict>>, key: &str, default: bool) -> PyResult<bool> {
+    match kw(kwargs, key) {
+        Some(v) => v.extract(),
+        None => Ok(default),
+    }
+}
+
+/// Resolve the two scalar params for a `MAP` op under semantic names, since
+/// `p0`/`p1` mean different things per mode. AFFINE reads `scale`/`offset`
+/// (mirroring `generate`/`combine`), CLAMP reads `lo`/`hi`, the comparison ops
+/// read `threshold`/`epsilon`; the value-only ops (abs/negate/…) take neither.
+/// Defaults are per-mode identities (AFFINE `scale=1`, CLAMP `hi=1`).
+fn map_params(kwargs: Option<&Bound<'_, PyDict>>, op: u32) -> PyResult<(f32, f32)> {
+    Ok(match op {
+        MAP_AFFINE => (
+            kw_f32(kwargs, "scale", 1.0)?,
+            kw_f32(kwargs, "offset", 0.0)?,
+        ),
+        MAP_CLAMP => (kw_f32(kwargs, "lo", 0.0)?, kw_f32(kwargs, "hi", 1.0)?),
+        MAP_GREATER | MAP_LESS | MAP_GEQ | MAP_LEQ | MAP_EQ | MAP_NEQ => (
+            kw_f32(kwargs, "threshold", 0.0)?,
+            kw_f32(kwargs, "epsilon", 1.0e-6)?,
+        ),
+        _ => (0.0, 0.0),
+    })
+}
+
+/// Parse the `op=` mode kwarg (a string) into an internal op code, or use the
+/// default code when absent.
+fn kw_op(
+    kwargs: Option<&Bound<'_, PyDict>>,
+    default: u32,
+    parse: fn(&str) -> PyResult<u32>,
+) -> PyResult<u32> {
+    match kw(kwargs, "op") {
+        Some(v) => parse(&v.extract::<String>()?),
+        None => Ok(default),
+    }
+}
 
 #[pyclass(eq, eq_int, from_py_object)]
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -192,6 +398,48 @@ impl Particles {
         ))
     }
 
+    /// Resolve an algebra operand — a `Buffer`, or an attribute name/`Attribute`
+    /// (materialized on demand) — to its backing buffer entity and component
+    /// count (1..=4).
+    fn resolve_operand(&self, val: &Bound<'_, PyAny>) -> PyResult<(Entity, u32)> {
+        if let Ok(b) = val.extract::<PyRef<Buffer>>() {
+            let comp = b.components().ok_or_else(|| {
+                PyRuntimeError::new_err(
+                    "operand buffer has no element type; pass a particle attribute \
+                     or a buffer created with typed data",
+                )
+            })?;
+            return Ok((b.entity, comp));
+        }
+        let attr_entity = self.resolve_attribute(val)?;
+        let buf = particles_ensure_attribute(self.entity, attr_entity)
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        let (_, fmt) = geometry_attribute_info(attr_entity)
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        let comp = match AttributeFormat::from_inner(fmt) {
+            AttributeFormat::Float => 1,
+            AttributeFormat::Float2 => 2,
+            AttributeFormat::Float3 => 3,
+            AttributeFormat::Float4 => 4,
+        };
+        Ok((buf, comp))
+    }
+
+    /// Required operand from a kwarg, else a clear error.
+    fn operand(&self, kwargs: Option<&Bound<'_, PyDict>>, key: &str) -> PyResult<(Entity, u32)> {
+        let val = kw(kwargs, key)
+            .ok_or_else(|| PyRuntimeError::new_err(format!("apply(): missing operand '{key}'")))?;
+        self.resolve_operand(&val)
+    }
+
+    /// Optional destination kwarg; defaults to `in_place` (the first operand).
+    fn dest(&self, kwargs: Option<&Bound<'_, PyDict>>, in_place: Entity) -> PyResult<Entity> {
+        match kw(kwargs, "out") {
+            Some(v) => Ok(self.resolve_operand(&v)?.0),
+            None => Ok(in_place),
+        }
+    }
+
     /// Build a particle system (backs `create_particles`). Attributes default to
     /// `position`; the rest (built-in or declared custom) materialize on demand.
     pub(crate) fn create(
@@ -226,6 +474,100 @@ impl Particles {
             entity,
             name_to_attr: Particles::build_name_index(&attrs)?,
         })
+    }
+
+    /// Dispatch a named operation (a built-in simulation kernel or an algebra
+    /// verb) from `apply(...)`. Private — not exposed to Python.
+    fn apply_named(&self, name: &str, kwargs: Option<&Bound<'_, PyDict>>) -> PyResult<()> {
+        fn rt(e: impl std::fmt::Display) -> PyErr {
+            PyRuntimeError::new_err(format!("{e}"))
+        }
+
+        // Simulation kernels: shared cached compute, kwargs are params, particle
+        // attribute buffers auto-bind by name.
+        if let Some(entity) = physics_compute(name)? {
+            if let Some(kwargs) = kwargs {
+                Compute::from_entity(entity).set(Some(kwargs))?;
+            }
+            return particles_apply(self.entity, entity).map_err(rt);
+        }
+
+        // Attribute-algebra verbs: explicit operands, in-place by default.
+        if name.eq_ignore_ascii_case(c::MAP) {
+            let (a, comp) = self.operand(kwargs, "a")?;
+            let out = self.dest(kwargs, a)?;
+            let op = kw_op(kwargs, MAP_AFFINE, parse_map_op)?;
+            let (p0, p1) = map_params(kwargs, op)?;
+            algebra_map(out, a, comp, op, p0, p1).map_err(rt)
+        } else if name.eq_ignore_ascii_case(c::COMBINE) {
+            let (a, comp) = self.operand(kwargs, "a")?;
+            let (b, _) = self.operand(kwargs, "b")?;
+            let out = self.dest(kwargs, a)?;
+            let op = kw_op(kwargs, COMBINE_ADD, parse_combine_op)?;
+            let b_scale = kw_f32(kwargs, "b_scale", 1.0)?;
+            let b_offset = kw_f32(kwargs, "b_offset", 0.0)?;
+            algebra_combine(out, a, b, comp, op, b_scale, b_offset).map_err(rt)
+        } else if name.eq_ignore_ascii_case(c::MIX) {
+            let (a, comp) = self.operand(kwargs, "a")?;
+            let (b, _) = self.operand(kwargs, "b")?;
+            let (t, _) = self.operand(kwargs, "t")?;
+            let out = self.dest(kwargs, a)?;
+            let t_scale = kw_f32(kwargs, "t_scale", 1.0)?;
+            let t_offset = kw_f32(kwargs, "t_offset", 0.0)?;
+            let t_clamp = kw_bool(kwargs, "t_clamp", true)?;
+            algebra_mix(out, a, b, t, comp, t_scale, t_offset, t_clamp).map_err(rt)
+        } else if name.eq_ignore_ascii_case(c::LOOKUP) {
+            let (a, in_comp) = self.operand(kwargs, "a")?;
+            let out = self.operand(kwargs, "out")?.0;
+            let tex = kw(kwargs, "tex")
+                .ok_or_else(|| PyRuntimeError::new_err("apply(lookup): missing 'tex' Image"))?
+                .extract::<PyRef<Image>>()
+                .map_err(|_| PyRuntimeError::new_err("apply(lookup): 'tex' must be an Image"))?
+                .entity;
+            let u_scale = kw_f32(kwargs, "u_scale", 1.0)?;
+            let u_offset = kw_f32(kwargs, "u_offset", 0.0)?;
+            let v_scale = kw_f32(kwargs, "v_scale", 1.0)?;
+            let v_offset = kw_f32(kwargs, "v_offset", 0.0)?;
+            let color_scale = kw_f32(kwargs, "color_scale", 1.0)?;
+            algebra_lookup(
+                out, a, tex, in_comp, u_scale, u_offset, v_scale, v_offset, color_scale,
+            )
+            .map_err(rt)
+        } else if name.eq_ignore_ascii_case(c::REDUCE) {
+            let (a, comp) = self.operand(kwargs, "a")?;
+            let out = self.operand(kwargs, "out")?.0;
+            let op = kw_op(kwargs, REDUCE_LENGTH, parse_reduce_op)?;
+            algebra_reduce(out, a, comp, op).map_err(rt)
+        } else if name.eq_ignore_ascii_case(c::EXTRACT) {
+            let (a, comp) = self.operand(kwargs, "a")?;
+            let out = self.operand(kwargs, "out")?.0;
+            let index = kw_u32(kwargs, "index", 0)?;
+            algebra_extract(out, a, comp, index).map_err(rt)
+        } else if name.eq_ignore_ascii_case(c::PACK) {
+            let out = self.operand(kwargs, "out")?.0;
+            let sources = kw(kwargs, "sources")
+                .ok_or_else(|| PyRuntimeError::new_err("apply(pack): missing 'sources' list"))?;
+            let items: Vec<Bound<'_, PyAny>> = sources.extract()?;
+            let mut entities = Vec::with_capacity(items.len());
+            for item in &items {
+                entities.push(self.resolve_operand(item)?.0);
+            }
+            algebra_pack(out, &entities).map_err(rt)
+        } else if name.eq_ignore_ascii_case(c::GENERATE) {
+            let (out, comp) = self.operand(kwargs, "out")?;
+            let mode = match kw(kwargs, "mode") {
+                Some(v) => parse_generate_mode(&v.extract::<String>()?)?,
+                None => GEN_UNIFORM,
+            };
+            let seed = kw_u32(kwargs, "seed", 0)?;
+            let scale = kw_f32(kwargs, "scale", 1.0)?;
+            let offset = kw_f32(kwargs, "offset", 0.0)?;
+            algebra_generate(out, comp, mode, seed, scale, offset).map_err(rt)
+        } else {
+            Err(PyValueError::new_err(format!(
+                "apply(): unknown operation {name:?}"
+            )))
+        }
     }
 }
 
@@ -273,13 +615,29 @@ impl Particles {
         Ok(Buffer::from_entity(buf, Some(element_type)))
     }
 
-    #[pyo3(signature = (compute, **kwargs))]
-    pub fn apply(&self, compute: &Compute, kwargs: Option<&Bound<'_, PyDict>>) -> PyResult<()> {
-        if let Some(kwargs) = kwargs {
-            compute.set(Some(kwargs))?;
+    /// Apply an operation to the particle system, mirroring `filter(...)`:
+    /// `kind` is either an operation constant (a string, e.g. `NOISE`, `MAP`) or a
+    /// custom `Compute` (a user kernel). Params and operands are keyword args;
+    /// operands accept an attribute name or a `Buffer`, and the destination
+    /// `out=` defaults to in-place on the first operand. The verb param is `kind`
+    /// (not `op`) so verbs whose mode is passed as `op=` (MAP, COMBINE) don't
+    /// collide with the positional argument.
+    #[pyo3(signature = (kind, **kwargs))]
+    pub fn apply(&self, kind: &Bound<'_, PyAny>, kwargs: Option<&Bound<'_, PyDict>>) -> PyResult<()> {
+        // A custom kernel (mirrors filter() accepting a Shader).
+        if let Ok(compute) = kind.extract::<PyRef<Compute>>() {
+            if let Some(kwargs) = kwargs {
+                compute.set(Some(kwargs))?;
+            }
+            return particles_apply(self.entity, compute.entity)
+                .map_err(|e| PyRuntimeError::new_err(format!("{e}")));
         }
-        particles_apply(self.entity, compute.entity)
-            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+        let name: String = kind.extract().map_err(|_| {
+            PyTypeError::new_err(
+                "apply(): first argument must be an operation constant or a Compute",
+            )
+        })?;
+        self.apply_named(&name, kwargs)
     }
 
     #[pyo3(signature = (n, **kwargs))]
@@ -314,6 +672,16 @@ impl Particles {
 
     pub fn emit_gpu(&self, n: u32, compute: &Compute) -> PyResult<()> {
         particles_emit_gpu(self.entity, n, compute.entity)
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    }
+
+    /// Stream-compact by keep-flags: `flags` (an f32 attribute or buffer,
+    /// non-zero = keep) is scanned and the dense list of kept particle indices
+    /// is written into `out` (a u32 buffer); returns the kept count. Pair with
+    /// `p.apply(MAP, a=..., op=GREATER, p0=..., out="flag")` to build the flags.
+    pub fn compact(&self, flags: &Bound<'_, PyAny>, out: &Buffer) -> PyResult<u32> {
+        let (flag_buf, _) = self.resolve_operand(flags)?;
+        compact_indices(flag_buf, out.entity)
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
@@ -400,11 +768,39 @@ impl Particles {
         Ok(Compute::from_entity(entity))
     }
 
-    #[staticmethod]
-    pub fn flock() -> PyResult<Compute> {
-        let entity =
-            particles_kernel_flock().map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
-        Ok(Compute::from_entity(entity))
+    /// Create a spatial hash grid for this particle system: an axis-aligned
+    /// domain of `dims` cells of `cell_size`, starting at `min`. For flocking,
+    /// keep `cell_size >= neighbor_distance`.
+    pub fn create_grid(
+        &self,
+        min: [f32; 3],
+        cell_size: f32,
+        dims: [u32; 3],
+    ) -> PyResult<Grid> {
+        let capacity = particles_capacity(self.entity)
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        let params = GridParams {
+            min,
+            cell_size,
+            dims,
+        };
+        let inner = grid_create(params, capacity)
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        Ok(Grid { inner })
+    }
+
+    /// Grid-accelerated boids: rebuild `grid` from the current positions and
+    /// steer `velocity` (the force pass). Keyword args set the flock params
+    /// (`sep_distance`, `neighbor_distance`, `weight_*`, `max_speed`, ...).
+    /// Follow with `p.apply(INTEGRATE, ...)` to move the particles.
+    #[pyo3(signature = (grid, **kwargs))]
+    pub fn flock(&self, grid: &Grid, kwargs: Option<&Bound<'_, PyDict>>) -> PyResult<()> {
+        let flock = flock_compute()?;
+        if let Some(kwargs) = kwargs {
+            Compute::from_entity(flock).set(Some(kwargs))?;
+        }
+        particles_flock(self.entity, flock, &grid.inner)
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
     #[staticmethod]
@@ -418,41 +814,6 @@ impl Particles {
     pub fn field() -> PyResult<Compute> {
         let entity =
             particles_kernel_field().map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
-        Ok(Compute::from_entity(entity))
-    }
-
-    #[staticmethod]
-    pub fn attr_linear() -> PyResult<Compute> {
-        let entity =
-            particles_kernel_attr_linear().map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
-        Ok(Compute::from_entity(entity))
-    }
-
-    #[staticmethod]
-    pub fn attr_combine() -> PyResult<Compute> {
-        let entity =
-            particles_kernel_attr_combine().map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
-        Ok(Compute::from_entity(entity))
-    }
-
-    #[staticmethod]
-    pub fn attr_mix() -> PyResult<Compute> {
-        let entity =
-            particles_kernel_attr_mix().map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
-        Ok(Compute::from_entity(entity))
-    }
-
-    #[staticmethod]
-    pub fn attr_lookup1d() -> PyResult<Compute> {
-        let entity = particles_kernel_attr_lookup1d()
-            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
-        Ok(Compute::from_entity(entity))
-    }
-
-    #[staticmethod]
-    pub fn attr_lookup2d() -> PyResult<Compute> {
-        let entity = particles_kernel_attr_lookup2d()
-            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
         Ok(Compute::from_entity(entity))
     }
 

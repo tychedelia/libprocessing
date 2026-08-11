@@ -146,6 +146,8 @@ pub fn flush_draw_commands(
     p_geometries: Query<(&Geometry, Option<&GltfNodeTransform>)>,
     p_material_handles: Query<&UntypedMaterial>,
     mut p_particles: Query<&mut Particles>,
+    p_particle_buffers: Query<&crate::compute::Buffer>,
+    builtin_attributes: Res<crate::geometry::attribute::BuiltinAttributes>,
     p_fonts: Query<&crate::text::font::Font>,
     text_cx: Res<TextContext>,
 ) {
@@ -924,7 +926,87 @@ pub fn flush_draw_commands(
                 }
                 DrawCommand::Particles {
                     particles,
-                    geometry,
+                    geometry: None,
+                    topology,
+                } => {
+                    let Ok(mut particles_data) = p_particles.get_mut(particles) else {
+                        warn!("Could not find Particles for entity {:?}", particles);
+                        continue;
+                    };
+
+                    // Direct-rasterization path: draw the particle buffers
+                    // directly, no instanced geometry. Resolve the position
+                    // attribute's backing GPU buffer handle.
+                    let position_attr = builtin_attributes.position;
+                    let Some(&buffer_entity) = particles_data.buffers.get(&position_attr) else {
+                        warn!("particles(p) with no geometry needs a materialized `position` buffer");
+                        continue;
+                    };
+                    let Ok(buffer) = p_particle_buffers.get(buffer_entity) else {
+                        warn!("position buffer {:?} has no compute::Buffer", buffer_entity);
+                        continue;
+                    };
+                    let position = buffer.handle.clone();
+                    let count = particles_data.capacity;
+
+                    // Connected topologies need GPU-generated index + indirect
+                    // buffers (built by the pyo3 layer before recording). Points
+                    // draw straight from the vertex count.
+                    let (index, indirect) = if topology == crate::geometry::Topology::PointList {
+                        (None, None)
+                    } else {
+                        let Some(connectivity) = particles_data.connectivity else {
+                            warn!("particles(p, {topology:?}) has no connectivity built");
+                            continue;
+                        };
+                        let (Ok(index_buf), Ok(indirect_buf)) = (
+                            p_particle_buffers.get(connectivity.index_buffer),
+                            p_particle_buffers.get(connectivity.indirect_buffer),
+                        ) else {
+                            warn!("connectivity buffers for {:?} not found", particles);
+                            continue;
+                        };
+                        (Some(index_buf.handle.clone()), Some(indirect_buf.handle.clone()))
+                    };
+                    let render_layers = batch.render_layers.clone();
+
+                    flush_batch(&mut res, &mut batch, &p_material_handles);
+
+                    let raster_draw = crate::particles::point_render::ParticleRasterDraw {
+                        position,
+                        count,
+                        topology,
+                        index,
+                        indirect,
+                    };
+                    match particles_data.raster_draw_entity {
+                        Some(e) => {
+                            res.commands.entity(e).insert((raster_draw, render_layers));
+                        }
+                        None => {
+                            let e = res
+                                .commands
+                                .spawn((
+                                    raster_draw,
+                                    Visibility::default(),
+                                    Transform::default(),
+                                    Aabb {
+                                        center: Vec3A::ZERO,
+                                        half_extents: Vec3A::splat(1000.0),
+                                    },
+                                    render_layers,
+                                ))
+                                .id();
+                            particles_data.raster_draw_entity = Some(e);
+                        }
+                    }
+
+                    batch.draw_index += 1;
+                }
+                DrawCommand::Particles {
+                    particles,
+                    geometry: Some(geometry),
+                    topology: _,
                 } => {
                     let Some((geometry_data, _)) = p_geometries.get(geometry).ok() else {
                         warn!("Could not find Geometry for entity {:?}", geometry);

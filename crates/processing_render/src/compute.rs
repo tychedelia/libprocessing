@@ -73,6 +73,30 @@ pub fn create_buffer(
         .id()
 }
 
+/// Like [`create_buffer`] but ORs `extra_usage` into the GPU buffer's usage
+/// flags — e.g. `INDEX`/`INDIRECT` so a compute-written buffer can also be bound
+/// as a hardware index buffer or drive `draw_indexed_indirect` (the direct-
+/// rasterization connectivity path). Storage/copy usage is always included.
+pub fn create_buffer_with_usage(
+    In((size, extra_usage)): In<(u64, BufferUsages)>,
+    mut commands: Commands,
+    mut buffers: ResMut<Assets<ShaderBuffer>>,
+    render_device: Res<RenderDevice>,
+) -> Entity {
+    let mut shader_buffer = ShaderBuffer::new(&vec![0u8; size as usize], RenderAssetUsages::all());
+    shader_buffer.buffer_description.usage |= extra_usage;
+    let handle = buffers.add(shader_buffer);
+    commands
+        .spawn(Buffer {
+            handle,
+            readback_buffer: readback_buffer(&render_device, size),
+            size,
+            synced: true,
+            bound_rw: false,
+        })
+        .id()
+}
+
 pub fn create_buffer_with_data(
     In(data): In<Vec<u8>>,
     mut commands: Commands,

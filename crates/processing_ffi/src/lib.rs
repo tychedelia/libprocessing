@@ -3684,7 +3684,8 @@ pub extern "C" fn processing_particles_draw(graphics_id: u64, particles_id: u64,
             graphics_entity,
             DrawCommand::Particles {
                 particles: Entity::from_bits(particles_id),
-                geometry: Entity::from_bits(geometry_id),
+                geometry: Some(Entity::from_bits(geometry_id)),
+                topology: geometry::Topology::PointList,
             },
         )
     });

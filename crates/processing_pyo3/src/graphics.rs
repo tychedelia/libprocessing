@@ -2171,16 +2171,34 @@ impl Graphics {
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
+    #[pyo3(signature = (particles, geometry = None, topology = None))]
     pub fn particles(
         &self,
         particles: &crate::particles::Particles,
-        geometry: &Geometry,
+        geometry: Option<&Geometry>,
+        topology: Option<&str>,
     ) -> PyResult<()> {
+        // Direct-raster primitive (ignored when instancing `geometry`). Defaults
+        // to points; `lines`/`triangles` need GPU connectivity built first.
+        let topology = match topology {
+            Some(s) => geometry::Topology::parse(s).ok_or_else(|| {
+                PyValueError::new_err(format!("particles(): unknown topology {s:?}"))
+            })?,
+            None => geometry::Topology::PointList,
+        };
+        if geometry.is_none() && topology != geometry::Topology::PointList {
+            processing_render::particles::particles_ensure_connectivity(
+                particles.entity,
+                topology,
+            )
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        }
         graphics_record_command(
             self.entity,
             DrawCommand::Particles {
                 particles: particles.entity,
-                geometry: geometry.entity,
+                geometry: geometry.map(|g| g.entity),
+                topology,
             },
         )
         .map_err(|e| PyRuntimeError::new_err(format!("{e}")))

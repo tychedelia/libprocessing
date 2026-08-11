@@ -442,6 +442,8 @@ mod mewnala {
     #[pymodule_export]
     use super::particles::AttributeFormat;
     #[pymodule_export]
+    use super::particles::Grid;
+    #[pymodule_export]
     use super::particles::Particles;
     #[pymodule_export]
     use super::surface::Surface;
@@ -1162,15 +1164,21 @@ mod mewnala {
     }
 
     #[pyfunction]
-    #[pyo3(pass_module, signature = (particles, geometry))]
+    #[pyo3(pass_module, signature = (particles, geometry = None, topology = None))]
     fn particles(
         module: &Bound<'_, PyModule>,
         particles: &Bound<'_, super::particles::Particles>,
-        geometry: &Bound<'_, Geometry>,
+        geometry: Option<&Bound<'_, Geometry>>,
+        topology: Option<&str>,
     ) -> PyResult<()> {
+        let geometry = match geometry {
+            Some(g) => Some(g.extract::<PyRef<Geometry>>()?),
+            None => None,
+        };
         graphics!(module).particles(
             &*particles.extract::<PyRef<super::particles::Particles>>()?,
-            &*geometry.extract::<PyRef<Geometry>>()?,
+            geometry.as_deref(),
+            topology,
         )
     }
 

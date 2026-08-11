@@ -26,15 +26,24 @@ pub use particles::{
     FALLOFF_INVERSE, FALLOFF_LINEAR, FALLOFF_QUADRATIC, FALLOFF_SMOOTHSTEP, particles_apply,
     particles_attribute_add, particles_buffer, particles_capacity, particles_create,
     particles_create_from_geometry, particles_destroy, particles_emit, particles_emit_gpu,
-    particles_ensure_attribute,
-    particles_kernel_age, particles_kernel_attr_combine, particles_kernel_attr_linear,
-    particles_kernel_attr_lookup1d, particles_kernel_attr_lookup2d, particles_kernel_attr_mix,
+    particles_ensure_attribute, particles_flock,
+    particles_kernel_age,
     particles_kernel_attract, particles_kernel_bounds_box, particles_kernel_bounds_geometry,
     particles_kernel_bounds_sphere, particles_kernel_drag, particles_kernel_field,
     particles_kernel_flock, particles_kernel_force, particles_kernel_impulse,
     particles_kernel_integrate, particles_kernel_noise, particles_kernel_orient,
     particles_kernel_transform, particles_kernel_vortex, particles_scatter_create,
-    particles_scatter_volume_create,
+    particles_scatter_volume_create, prefix_sum_u32,
+};
+pub use particles::grid::{Grid, GridParams, grid_bind, grid_build, grid_create};
+pub use particles::sort::bitonic_sort_by_key;
+pub use particles::compact::compact;
+pub use particles::reduce::{REDUCE_OP_MAX, REDUCE_OP_MIN, REDUCE_OP_SUM, reduce};
+pub use particles::algebra::{
+    GEN_GAUSSIAN, GEN_SIGNED, GEN_UNIFORM, MAP_ABS, MAP_AFFINE, MAP_CLAMP, MAP_EQ, MAP_FLOOR,
+    MAP_GEQ, MAP_GREATER, MAP_LEQ, MAP_LESS, MAP_NEGATE, MAP_NEQ, MAP_SQRT, MAP_SQUARE,
+    REDUCE_LENGTH, REDUCE_MAX, REDUCE_MEAN, REDUCE_MIN, REDUCE_SUM, REDUCE_SUMSQ, combine, extract,
+    generate, lookup, map, mix, pack, reduce_components,
 };
 
 use std::path::PathBuf;
@@ -1762,6 +1771,25 @@ pub fn shader_create(source: &str) -> error::Result<Entity> {
     })
 }
 
+/// Create a shader, enabling/disabling WESL `@if(name)` feature flags so one
+/// source can specialize into multiple pipelines (e.g. in-place vs out-of-place
+/// binding layouts for the attribute-algebra verbs).
+pub fn shader_create_with_features(
+    source: &str,
+    features: &[(&str, bool)],
+) -> error::Result<Entity> {
+    let features: Vec<(String, bool)> =
+        features.iter().map(|(k, v)| (k.to_string(), *v)).collect();
+    app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(
+                material::custom::create_shader_with_features,
+                (source.to_string(), features),
+            )
+            .unwrap()
+    })
+}
+
 /// load a shader. Accepts either an asset-relative path (`"shaders/foo.wgsl"`)
 /// or a URL-scheme asset path (`"embedded://crate/file.wgsl"`).
 pub fn shader_load(path: &str) -> error::Result<Entity> {
@@ -2199,6 +2227,20 @@ pub fn buffer_create(size: u64) -> error::Result<Entity> {
         let entity = app
             .world_mut()
             .run_system_cached_with(compute::create_buffer, size)
+            .unwrap();
+        app.update();
+        Ok(entity)
+    })
+}
+
+pub fn buffer_create_with_usage(
+    size: u64,
+    extra_usage: bevy::render::render_resource::BufferUsages,
+) -> error::Result<Entity> {
+    app_mut(|app| {
+        let entity = app
+            .world_mut()
+            .run_system_cached_with(compute::create_buffer_with_usage, (size, extra_usage))
             .unwrap();
         app.update();
         Ok(entity)

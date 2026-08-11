@@ -55,6 +55,69 @@ pub const LAB: &str = "lab";
 pub const LCH: &str = "lch";
 pub const XYZ: &str = "xyz";
 
+// Particle operations, passed as the first argument to `Particles.apply(...)`
+// (mirroring `filter(...)`). The verb selects the operation; `op=` selects its
+// mode. `CLAMP` (map) and `SQUARE` (map) reuse the constants defined above.
+pub const MAP: &str = "map";
+pub const COMBINE: &str = "combine";
+pub const MIX: &str = "mix";
+pub const LOOKUP: &str = "lookup";
+pub const REDUCE: &str = "reduce";
+pub const EXTRACT: &str = "extract";
+pub const PACK: &str = "pack";
+pub const GENERATE: &str = "generate";
+
+// map op= modes (also CLAMP, SQUARE above)
+pub const AFFINE: &str = "affine";
+pub const ABS: &str = "abs";
+pub const NEGATE: &str = "negate";
+pub const FLOOR: &str = "floor";
+pub const SQRT: &str = "sqrt";
+// map comparison modes → 1.0/0.0 keep-flags (group predicate for compaction)
+pub const GREATER: &str = "greater";
+pub const LESS: &str = "less";
+pub const GEQ: &str = "geq";
+pub const LEQ: &str = "leq";
+pub const EQ: &str = "eq";
+pub const NEQ: &str = "neq";
+
+// combine op= modes (also MIN, MAX below)
+pub const ADD: &str = "add";
+pub const SUB: &str = "sub";
+pub const MUL: &str = "mul";
+pub const DIV: &str = "div";
+pub const POW: &str = "pow";
+
+// reduce op= modes (also MIN, MAX)
+pub const LENGTH: &str = "length";
+pub const SUM: &str = "sum";
+pub const SUMSQ: &str = "sumsq";
+pub const MEAN: &str = "mean";
+pub const MIN: &str = "min";
+pub const MAX: &str = "max";
+
+// generate op= modes
+pub const UNIFORM: &str = "uniform";
+pub const SIGNED: &str = "signed";
+pub const GAUSSIAN: &str = "gaussian";
+
+// Built-in simulation kernels, also applied via `Particles.apply(NOISE, ...)`.
+// (Kernels needing a source geometry or a grid — bounds_geometry, scatter_*,
+// flock — stay as the `Particles.<name>()` factory + `apply(kernel)` path.)
+pub const NOISE: &str = "noise";
+pub const TRANSFORM: &str = "transform";
+pub const ATTRACT: &str = "attract";
+pub const DRAG: &str = "drag";
+pub const VORTEX: &str = "vortex";
+pub const FORCE: &str = "force";
+pub const INTEGRATE: &str = "integrate";
+pub const AGE: &str = "age";
+pub const IMPULSE: &str = "impulse";
+pub const ORIENT: &str = "orient";
+pub const FIELD: &str = "field";
+pub const BOUNDS_SPHERE: &str = "bounds_sphere";
+pub const BOUNDS_BOX: &str = "bounds_box";
+
 pub const PI: f32 = std::f32::consts::PI;
 pub const TWO_PI: f32 = std::f32::consts::TAU;
 pub const HALF_PI: f32 = std::f32::consts::FRAC_PI_2;

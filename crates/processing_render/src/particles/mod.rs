@@ -1,23 +1,42 @@
 //! See `docs/particles.md`.
 
+pub mod algebra;
+pub mod compact;
+pub mod connectivity;
 mod emit;
+pub mod grid;
 pub mod kernels;
 pub mod material;
 pub mod pack;
+pub mod point_render;
 mod scatter;
+pub mod reduce;
+pub mod scan;
+pub mod sort;
 
-pub use emit::{particles_apply, particles_emit, particles_emit_gpu};
+pub use connectivity::particles_ensure_connectivity;
+pub use emit::{particles_apply, particles_emit, particles_emit_gpu, particles_flock};
 pub use kernels::{
     BOUNDS_CLAMP, BOUNDS_REFLECT, BOUNDS_SOFT, BOUNDS_WRAP, COMBINE_ADD, COMBINE_DIV, COMBINE_MAX,
     COMBINE_MIN, COMBINE_MUL, COMBINE_POW, COMBINE_SUB, FALLOFF_CONST, FALLOFF_CUBIC,
     FALLOFF_INVERSE, FALLOFF_LINEAR, FALLOFF_QUADRATIC, FALLOFF_SMOOTHSTEP, particles_kernel_age,
-    particles_kernel_attr_combine, particles_kernel_attr_linear, particles_kernel_attr_lookup1d,
-    particles_kernel_attr_lookup2d, particles_kernel_attr_mix, particles_kernel_attract,
+    particles_kernel_attract,
     particles_kernel_bounds_box, particles_kernel_bounds_geometry, particles_kernel_bounds_sphere,
     particles_kernel_drag, particles_kernel_field, particles_kernel_flock, particles_kernel_force,
     particles_kernel_impulse, particles_kernel_integrate, particles_kernel_noise,
     particles_kernel_orient, particles_kernel_transform, particles_kernel_vortex,
 };
+pub use algebra::{
+    GEN_GAUSSIAN, GEN_SIGNED, GEN_UNIFORM, MAP_ABS, MAP_AFFINE, MAP_CLAMP, MAP_EQ, MAP_FLOOR,
+    MAP_GEQ, MAP_GREATER, MAP_LEQ, MAP_LESS, MAP_NEGATE, MAP_NEQ, MAP_SQRT, MAP_SQUARE,
+    REDUCE_LENGTH, REDUCE_MAX, REDUCE_MEAN, REDUCE_MIN, REDUCE_SUM, REDUCE_SUMSQ, combine, extract,
+    generate, lookup, map, mix, pack, reduce_components,
+};
+pub use grid::{Grid, GridParams, grid_bind, grid_build, grid_create};
+pub use compact::compact;
+pub use reduce::{REDUCE_OP_MAX, REDUCE_OP_MIN, REDUCE_OP_SUM, reduce};
+pub use scan::prefix_sum_u32;
+pub use sort::bitonic_sort_by_key;
 pub use scatter::{
     particles_scatter_create, particles_scatter_volume_create, prepare_scatter_source,
     prepare_scatter_volume_source,
@@ -48,6 +67,7 @@ impl Plugin for ParticlesPlugin {
         app.add_plugins(pack::ParticlesPackPlugin);
         app.add_plugins(material::ParticlesMaterialPlugin);
         app.add_plugins(kernels::ParticlesKernelsPlugin);
+        app.add_plugins(point_render::ParticlesPointRenderPlugin);
     }
 
     fn finish(&self, app: &mut App) {
@@ -71,8 +91,25 @@ pub struct Particles {
     /// Must outlive the per-frame draw: `GpuInstanceBatchReservations` queues
     /// mesh batches one frame behind, so respawning per-frame loses the reservation.
     pub draw_entity: Option<Entity>,
+    /// Persistent entity for the direct-rasterization draw (`particles(p)` with
+    /// no geometry — points, or connected lines/triangles). Reused across frames.
+    pub raster_draw_entity: Option<Entity>,
+    /// GPU-generated index + indirect-args buffers for connected raster draws,
+    /// built once per topology by [`connectivity::particles_ensure_connectivity`].
+    pub connectivity: Option<Connectivity>,
     /// Ring-buffer write cursor; wraps at `capacity`.
     pub emit_head: u32,
+}
+
+/// GPU connectivity for the direct-rasterization path: a hardware index buffer
+/// and the indirect draw args, both compute-generated. See `connectivity.rs`.
+#[derive(Clone, Copy)]
+pub struct Connectivity {
+    pub topology: crate::geometry::Topology,
+    /// `compute::Buffer` entity, `STORAGE | INDEX` — the vertex index list.
+    pub index_buffer: Entity,
+    /// `compute::Buffer` entity, `STORAGE | INDIRECT` — `DrawIndexedIndirectArgs`.
+    pub indirect_buffer: Entity,
 }
 
 impl Particles {
@@ -113,6 +150,8 @@ pub fn create(
             capacity,
             buffers,
             draw_entity: None,
+            raster_draw_entity: None,
+            connectivity: None,
             emit_head: 0,
         })
         .id();
@@ -159,6 +198,8 @@ pub fn create_from_geometry(
             capacity,
             buffers,
             draw_entity: None,
+            raster_draw_entity: None,
+            connectivity: None,
             emit_head: 0,
         })
         .id();
@@ -230,6 +271,13 @@ pub fn destroy(
     }
     if let Some(draw_entity) = p.draw_entity {
         commands.entity(draw_entity).despawn();
+    }
+    if let Some(raster_draw_entity) = p.raster_draw_entity {
+        commands.entity(raster_draw_entity).despawn();
+    }
+    if let Some(connectivity) = p.connectivity {
+        commands.entity(connectivity.index_buffer).despawn();
+        commands.entity(connectivity.indirect_buffer).despawn();
     }
     commands.entity(entity).despawn();
     Ok(())

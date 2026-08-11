@@ -45,13 +45,18 @@ impl Plugin for ParticlesKernelsPlugin {
         embedded_asset!(app, "flock.wgsl");
         embedded_asset!(app, "orient.wgsl");
         embedded_asset!(app, "field.wgsl");
-        embedded_asset!(app, "attr_linear.wgsl");
-        embedded_asset!(app, "attr_combine.wgsl");
-        embedded_asset!(app, "attr_mix.wgsl");
-        embedded_asset!(app, "attr_lookup1d.wgsl");
-        embedded_asset!(app, "attr_lookup2d.wgsl");
         embedded_asset!(app, "scatter_surface.wgsl");
         embedded_asset!(app, "scatter_volume.wgsl");
+        embedded_asset!(app, "scan_block.wgsl");
+        embedded_asset!(app, "scan_add.wgsl");
+        embedded_asset!(app, "grid_clear.wgsl");
+        embedded_asset!(app, "grid_count.wgsl");
+        embedded_asset!(app, "grid_copy.wgsl");
+        embedded_asset!(app, "grid_scatter.wgsl");
+        embedded_asset!(app, "bitonic.wgsl");
+        embedded_asset!(app, "compact_flag.wgsl");
+        embedded_asset!(app, "compact_scatter.wgsl");
+        embedded_asset!(app, "reduce.wgsl");
     }
 }
 
@@ -279,47 +284,7 @@ pub fn particles_kernel_field() -> error::Result<Entity> {
     Ok(entity)
 }
 
-pub fn particles_kernel_attr_linear() -> error::Result<Entity> {
-    let shader = shader_load("embedded://processing_render/particles/kernels/attr_linear.wgsl")?;
-    let entity = compute_create(shader)?;
-    compute_set(entity, "scale", ShaderValue::Float(1.0))?;
-    compute_set(entity, "offset", ShaderValue::Float(0.0))?;
-    Ok(entity)
-}
-
-pub fn particles_kernel_attr_combine() -> error::Result<Entity> {
-    let shader = shader_load("embedded://processing_render/particles/kernels/attr_combine.wgsl")?;
-    let entity = compute_create(shader)?;
-    compute_set(entity, "op", ShaderValue::UInt(COMBINE_ADD))?;
-    compute_set(entity, "b_scale", ShaderValue::Float(1.0))?;
-    compute_set(entity, "b_offset", ShaderValue::Float(0.0))?;
-    Ok(entity)
-}
-
-pub fn particles_kernel_attr_mix() -> error::Result<Entity> {
-    let shader = shader_load("embedded://processing_render/particles/kernels/attr_mix.wgsl")?;
-    let entity = compute_create(shader)?;
-    compute_set(entity, "t_scale", ShaderValue::Float(1.0))?;
-    compute_set(entity, "t_offset", ShaderValue::Float(0.0))?;
-    compute_set(entity, "t_clamp", ShaderValue::UInt(1))?;
-    Ok(entity)
-}
-
-pub fn particles_kernel_attr_lookup1d() -> error::Result<Entity> {
-    let shader = shader_load("embedded://processing_render/particles/kernels/attr_lookup1d.wgsl")?;
-    let entity = compute_create(shader)?;
-    compute_set(entity, "scale", ShaderValue::Float(1.0))?;
-    compute_set(entity, "offset", ShaderValue::Float(0.0))?;
-    Ok(entity)
-}
-
-pub fn particles_kernel_attr_lookup2d() -> error::Result<Entity> {
-    let shader = shader_load("embedded://processing_render/particles/kernels/attr_lookup2d.wgsl")?;
-    let entity = compute_create(shader)?;
-    compute_set(entity, "u_scale", ShaderValue::Float(1.0))?;
-    compute_set(entity, "u_offset", ShaderValue::Float(0.0))?;
-    compute_set(entity, "v_scale", ShaderValue::Float(1.0))?;
-    compute_set(entity, "v_offset", ShaderValue::Float(0.0))?;
-    compute_set(entity, "color_scale", ShaderValue::Float(1.0))?;
-    Ok(entity)
-}
+// The old `attr_linear` / `attr_combine` / `attr_mix` / `attr_lookup1d` /
+// `attr_lookup2d` kernels were replaced by the component-generic attribute
+// algebra in `particles/algebra.rs` (`map` / `combine` / `mix` / `lookup`).
+// The `COMBINE_*` constants above are still the shared op selectors.

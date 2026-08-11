@@ -140,6 +140,17 @@ impl wesl::Resolver for ProcessingResolver<'_> {
 }
 
 pub(crate) fn compile_shader(source: &str) -> Result<(String, naga::Module)> {
+    compile_shader_with_features(source, &[])
+}
+
+/// Like [`compile_shader`], but enables/disables WESL conditional-translation
+/// feature flags (`@if(name)`). Lets one shader source specialize into several
+/// pipelines (e.g. an in-place vs out-of-place binding layout) — the reflected
+/// module is the post-condcomp output, so bind-group layouts match the variant.
+pub(crate) fn compile_shader_with_features(
+    source: &str,
+    features: &[(&str, bool)],
+) -> Result<(String, naga::Module)> {
     let mut pkg_resolver = PkgResolver::new();
     pkg_resolver.add_package(&processing::PACKAGE);
     pkg_resolver.add_package(&lygia::PACKAGE);
@@ -149,11 +160,17 @@ pub(crate) fn compile_shader(source: &str) -> Result<(String, naga::Module)> {
         pkg_resolver,
     };
     let module_path: ModulePath = "entry".parse().unwrap();
-    let options = wesl::CompileOptions {
+    let mut options = wesl::CompileOptions {
         imports: true,
         strip: false,
         ..Default::default()
     };
+    for (name, enabled) in features {
+        options
+            .features
+            .flags
+            .insert((*name).to_string(), (*enabled).into());
+    }
     let compiled = wesl::compile(&module_path, &resolver, &wesl::EscapeMangler, &options)
         .map_err(|e| ProcessingError::ShaderCompilationError(e.to_string()))?;
     let wgsl = compiled.to_string();
@@ -168,6 +185,22 @@ pub fn create_shader(
     mut shaders: ResMut<Assets<ShaderAsset>>,
 ) -> Result<Entity> {
     let (compiled_wgsl, module) = compile_shader(&source)?;
+    let shader_handle = shaders.add(ShaderAsset::from_wgsl(compiled_wgsl, "custom_material"));
+    Ok(commands
+        .spawn(Shader {
+            module,
+            shader_handle,
+        })
+        .id())
+}
+
+pub fn create_shader_with_features(
+    In((source, features)): In<(String, Vec<(String, bool)>)>,
+    mut commands: Commands,
+    mut shaders: ResMut<Assets<ShaderAsset>>,
+) -> Result<Entity> {
+    let feats: Vec<(&str, bool)> = features.iter().map(|(k, v)| (k.as_str(), *v)).collect();
+    let (compiled_wgsl, module) = compile_shader_with_features(&source, &feats)?;
     let shader_handle = shaders.add(ShaderAsset::from_wgsl(compiled_wgsl, "custom_material"));
     Ok(commands
         .spawn(Shader {

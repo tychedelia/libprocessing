@@ -4,6 +4,7 @@ use processing_core::app_mut;
 use processing_core::error;
 
 use crate::geometry;
+use crate::particles::grid::{Grid, grid_bind, grid_build};
 use crate::particles::kernels::KernelRequires;
 use crate::particles::{Particles, particles_ensure_attribute};
 use crate::shader_value::ShaderValue;
@@ -138,6 +139,42 @@ pub fn particles_emit(
         field.emit_head = (field.emit_head + n) % field.capacity;
         Ok(())
     })
+}
+
+/// Grid-accelerated flocking in one call: rebuild `grid` from the particle
+/// positions, bind its neighbour structure into the flock kernel, then apply.
+///
+/// This is only the *velocity* (steering) pass — follow it with the `integrate`
+/// kernel to move the particles, e.g.
+/// `particles_flock(p, flock, &grid)?; particles_apply(p, integrate)?;`.
+/// `grid` must be created for this system's capacity with
+/// `cell_size >= neighbor_distance`.
+pub fn particles_flock(
+    particles_entity: Entity,
+    flock_entity: Entity,
+    grid: &Grid,
+) -> error::Result<()> {
+    let position = app_mut(|app| {
+        let world = app.world();
+        let field = world
+            .get::<Particles>(particles_entity)
+            .ok_or(error::ProcessingError::ParticlesNotFound)?;
+        for (&attr_entity, &buf_entity) in &field.buffers {
+            let attr = world
+                .get::<geometry::Attribute>(attr_entity)
+                .ok_or(error::ProcessingError::InvalidEntity)?;
+            if attr.name == "position" {
+                return Ok(buf_entity);
+            }
+        }
+        Err(error::ProcessingError::InvalidArgument(
+            "particles_flock requires a `position` attribute".to_string(),
+        ))
+    })?;
+
+    grid_build(grid, position)?;
+    grid_bind(grid, flock_entity)?;
+    particles_apply(particles_entity, flock_entity)
 }
 
 pub fn particles_apply(particles_entity: Entity, compute_entity: Entity) -> error::Result<()> {
