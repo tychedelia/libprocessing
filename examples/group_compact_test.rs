@@ -1,10 +1,3 @@
-//! Validation harness for task #17: stream compaction (`compact`) and the group
-//! predicate (`map` comparison ops). Checks the compaction primitive directly,
-//! then the full chain: a `> threshold` predicate produces keep-flags which
-//! compact to the dense list of matching indices.
-//!
-//! Run: `cargo run --example group_compact_test`. Exits non-zero on mismatch.
-
 use bevy::prelude::Entity;
 use processing::prelude::*;
 
@@ -44,7 +37,6 @@ fn sketch() -> error::Result<bool> {
 
     let mut ok = true;
 
-    // --- compaction primitive, directly ---
     let (c, out) = compact_flags(&[0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0])?;
     ok &= check("compact mixed", c, &out, &[1, 2, 4, 7]);
 
@@ -54,12 +46,10 @@ fn sketch() -> error::Result<bool> {
     let (c, out) = compact_flags(&[1.0, 1.0, 1.0, 1.0])?;
     ok &= check("compact all", c, &out, &[0, 1, 2, 3]);
 
-    // --- group predicate (map > threshold) -> compact ---
     let src_vals = [0.1f32, 0.5, 0.9, 0.3, 0.7];
     let src = buffer_create_with_data(f32_bytes(&src_vals))?;
     let flags = buffer_create((src_vals.len() as u64) * 4)?;
     let idx = buffer_create((src_vals.len() as u64) * 4)?;
-    // flags[i] = src[i] > 0.4 ? 1 : 0   → [0,1,1,0,1]
     map(flags, src, 1, MAP_GREATER, 0.4, 0.0)?;
     let count = compact(flags, idx)?;
     let out = u32s(&buffer_read(idx)?);

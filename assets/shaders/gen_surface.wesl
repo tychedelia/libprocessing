@@ -31,7 +31,6 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let t = params.time;
     let p = vec2(x, z);
 
-    // swells
     let w1 = wave(p, vec2(1.0, 0.3),  0.6, 0.7, t) * 1.0;
     let w2 = wave(p, vec2(0.4, 1.0),  0.9, 0.9, t) * 0.6;
     let w3 = wave(p, vec2(-0.7, 0.6), 1.7, 1.4, t) * 0.3;

@@ -1,19 +1,3 @@
-//! Direct rasterization for `Particles` (task #31). Draws a particle `position`
-//! storage buffer with a custom pipeline + `RenderCommand`, bypassing the
-//! mesh/instancing path entirely: positions are vertex-pulled by
-//! `@builtin(vertex_index)` (see `point.wgsl`), projected by the camera view
-//! uniform. Three modes, one shader + one pipeline family:
-//!
-//! - **points** (rung 1): `PointList`, `draw(0..count)`, no index buffer.
-//! - **lines / triangles** (rung 2): a GPU-generated hardware index buffer +
-//!   indirect args (see `connectivity.rs`) drive a single `draw_indexed_indirect`
-//!   — the connectivity and the draw count come entirely from the GPU. The
-//!   vertex shader is unchanged: `@builtin(vertex_index)` simply becomes the
-//!   index value, so the same position-pull works for any topology.
-//!
-//! Modeled on Bevy's `custom_phase_item` example, plus a minimal view bind group
-//! and a per-entity storage bind group for the position buffer.
-
 use bevy::asset::embedded_asset;
 use bevy::camera::visibility::{self, VisibilityClass};
 use bevy::core_pipeline::core_3d::{
@@ -52,8 +36,6 @@ use bevy::render::storage::ShaderBuffer;
 
 use crate::geometry::Topology;
 
-/// The color-target format our graphics surfaces use (HDR). Must match the view
-/// target or the draw silently produces nothing.
 const SURFACE_FORMAT: TextureFormat = TextureFormat::Rgba16Float;
 
 pub struct ParticlesPointRenderPlugin;
@@ -83,11 +65,6 @@ impl Plugin for ParticlesPointRenderPlugin {
     }
 }
 
-/// Marker on a draw entity that rasterizes a particle buffer directly. Extracted
-/// to the render world. `position` is the particle `position` buffer's handle;
-/// `count` is the vertex count (points). `topology` picks the primitive; when it
-/// is not `PointList`, `index` + `indirect` (GPU-generated, see `connectivity.rs`)
-/// drive a `draw_indexed_indirect`.
 #[derive(Component, Clone, ExtractComponent)]
 #[require(VisibilityClass)]
 #[component(on_add = visibility::add_visibility_class::<ParticleRasterDraw>)]
@@ -97,14 +74,9 @@ pub struct ParticleRasterDraw {
     pub topology: Topology,
     pub index: Option<Handle<ShaderBuffer>>,
     pub indirect: Option<Handle<ShaderBuffer>>,
-    /// Per-vertex color (`vec4`, flat f32) and normal (`vec3`, flat f32) pulled
-    /// from the particle attribute buffers when present, mirroring how the
-    /// instanced `ParticlesMaterial` binds `colors`. `None` → white / flat.
     pub color: Option<Handle<ShaderBuffer>>,
     pub normal: Option<Handle<ShaderBuffer>>,
 }
-
-// --- pipeline ---------------------------------------------------------------
 
 #[derive(Resource)]
 struct ParticleRasterPipeline {
@@ -118,9 +90,7 @@ struct RasterSpecializer;
 #[derive(Copy, Clone, PartialEq, Eq, Hash, SpecializerKey)]
 struct RasterKey {
     samples: u32,
-    /// `Topology` repr — the primitive to rasterize with.
     topology: u8,
-    /// Whether the particle system has materialized `color` / `normal` buffers.
     has_color: bool,
     has_normal: bool,
 }
@@ -143,8 +113,6 @@ impl Specializer<RenderPipeline> for RasterSpecializer {
         if key.has_normal {
             defs.push("HAS_NORMALS");
         }
-        // Triangle surfaces get lighting; points/lines stay flat, so `SHADED` is
-        // defined only for triangle topology.
         if matches!(topology, Topology::TriangleList | Topology::TriangleStrip) {
             defs.push("SHADED");
         }
@@ -165,17 +133,12 @@ impl FromWorld for ParticleRasterPipeline {
         let shader: Handle<Shader> =
             asset_server.load("embedded://processing_render/particles/point.wgsl");
 
-        // Group 0: the camera view uniform (minimal, just what the shader reads).
         let view_entries: Vec<_> = BindGroupLayoutEntries::single(
             ShaderStages::VERTEX,
             uniform_buffer::<ViewUniform>(true),
         )
         .to_vec();
         let view_layout = render_device.create_bind_group_layout("point_view_layout", &view_entries);
-        // Group 1: the particle position / color / normal storage buffers. This
-        // layout is a fixed superset — the shader references binding 1/2 only
-        // under HAS_COLORS / HAS_NORMALS; absent attributes bind `position` as an
-        // unread placeholder, so a single layout serves every variant.
         let storage_entries: Vec<_> = BindGroupLayoutEntries::sequential(
             ShaderStages::VERTEX,
             (
@@ -217,7 +180,6 @@ impl FromWorld for ParticleRasterPipeline {
                 ..default()
             }),
             primitive: PrimitiveState {
-                // Overridden per draw by the specializer; PointList is rung 1.
                 topology: PrimitiveTopology::PointList,
                 ..default()
             },
@@ -239,12 +201,6 @@ impl FromWorld for ParticleRasterPipeline {
     }
 }
 
-// --- bind groups ------------------------------------------------------------
-
-/// Per-draw GPU resources resolved each frame: the position storage bind group,
-/// the point vertex count, and (for connected topologies) the index + indirect
-/// buffers. Owned `Buffer`s (cheap Arc clones) so the draw command can bind them
-/// directly with the render-world lifetime.
 struct RasterEntry {
     storage_bg: BindGroup,
     count: u32,
@@ -279,8 +235,6 @@ fn prepare_raster_bind_groups(
         let Some(position) = gpu_buffers.get(&draw.position) else {
             continue;
         };
-        // Connected topologies need both GPU buffers ready; skip the draw this
-        // frame if either is still uploading.
         let (index, indirect) = match (&draw.index, &draw.indirect) {
             (Some(index_handle), Some(indirect_handle)) => {
                 let (Some(index_gpu), Some(indirect_gpu)) = (
@@ -293,10 +247,6 @@ fn prepare_raster_bind_groups(
             }
             _ => (None, None),
         };
-        // Bind color/normal when the attribute exists and is uploaded; otherwise
-        // bind `position` as an unread placeholder (the shader only touches these
-        // under HAS_COLORS / HAS_NORMALS, which the key gates in lockstep). A
-        // present-but-not-yet-ready buffer skips the draw for this frame.
         let color_buffer = match &draw.color {
             Some(handle) => match gpu_buffers.get(handle) {
                 Some(gpu) => &gpu.buffer,
@@ -332,8 +282,6 @@ fn prepare_raster_bind_groups(
     }
 }
 
-// --- queue ------------------------------------------------------------------
-
 fn queue_particle_raster(
     pipeline_cache: Res<PipelineCache>,
     mut pipeline: ResMut<ParticleRasterPipeline>,
@@ -352,16 +300,6 @@ fn queue_particle_raster(
             continue;
         };
 
-        // Our specialization key is DYNAMIC (topology / color / normal / MSAA can
-        // change frame-to-frame on a persistent entity), and the `Opaque3d` bin
-        // is RETAINED across frames. So we manage our own items: remove last
-        // frame's bin entry, re-specialize with the current key, re-add. This
-        // uses ONLY the phase — it must NOT touch the shared `DirtySpecializations`,
-        // whose class-agnostic dequeue path would let the mesh queue evict our
-        // items (that mistake blacked out all rendering; see the memory).
-        //
-        // `remove` is a no-op on a cache miss and cleanly swaps the bin when the
-        // key changed; entities that go invisible get their stale entry dropped.
         for (_, main_entity) in &visible_raster.removed_entities {
             phase.remove(*main_entity);
         }
@@ -401,8 +339,6 @@ fn queue_particle_raster(
         }
     }
 }
-
-// --- render commands --------------------------------------------------------
 
 type DrawParticleRasterCommands = (
     SetItemPipeline,
@@ -470,12 +406,10 @@ impl<P: PhaseItem> RenderCommand<P> for DrawParticleRaster {
             return RenderCommandResult::Skip;
         };
         match (&entry.index, &entry.indirect) {
-            // Connected topology: GPU-generated indices + draw count.
             (Some(index), Some(indirect)) => {
                 pass.set_index_buffer(index.slice(..), IndexFormat::Uint32);
                 pass.draw_indexed_indirect(indirect, 0);
             }
-            // Points: one vertex per particle, count known on the CPU.
             _ => pass.draw(0..entry.count, 0..1),
         }
         RenderCommandResult::Success

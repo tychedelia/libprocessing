@@ -1,9 +1,3 @@
-// Pure-GPU surface with GPU-generated color AND normals. One compute pass writes
-// position, color, normal (all particle attributes, auto-bound by p.apply) and
-// the triangle index buffer (bound via gen.set(indices=idx)). The raster path
-// then pulls per-vertex color + normal (HAS_COLORS / HAS_NORMALS) for smooth
-// lit shading — no CPU geometry at all.
-
 struct Params {
     nx: u32,
     ny: u32,
@@ -42,7 +36,6 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     position[i * 3u + 1u] = h;
     position[i * 3u + 2u] = z;
 
-    // Smooth normal by central differences of the height field.
     let e = 0.12;
     let hl = height(x - e, z, t);
     let hr = height(x + e, z, t);
@@ -53,14 +46,12 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     normal[i * 3u + 1u] = n.y;
     normal[i * 3u + 2u] = n.z;
 
-    // Color by height: deep blue troughs -> warm crests.
     let c = clamp(h * 0.35 + 0.5, 0.0, 1.0);
     color[i * 4u + 0u] = 0.15 + 0.75 * c;
     color[i * 4u + 1u] = 0.30 + 0.45 * (1.0 - abs(c - 0.5) * 2.0);
     color[i * 4u + 2u] = 0.95 - 0.65 * c;
     color[i * 4u + 3u] = 1.0;
 
-    // Connectivity: vertex (gx, gy) owns grid cell (gx, gy) -> two triangles.
     if gx + 1u < nx && gy + 1u < ny {
         let cell = gy * (nx - 1u) + gx;
         let base = cell * 6u;

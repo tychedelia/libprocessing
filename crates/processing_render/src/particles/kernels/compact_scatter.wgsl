@@ -1,8 +1,3 @@
-// Stream compaction, step 3: each kept particle writes its own index into its
-// dense output slot — its exclusive-scan offset. After this,
-// `indices[0..count]` are the kept particle indices in ascending order.
-// See `particles/compact.rs`.
-
 @group(0) @binding(0) var<storage, read>       flags:   array<f32>;
 @group(0) @binding(1) var<storage, read>       scanned: array<u32>;
 @group(0) @binding(2) var<storage, read_write> indices: array<u32>;

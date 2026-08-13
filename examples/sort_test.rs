@@ -1,10 +1,3 @@
-//! Validation harness for the GPU bitonic sort (`bitonic_sort_by_key`). Sorts a
-//! buffer of random f32 keys with `payload[i] = i`, then checks: keys come back
-//! ascending, payload is a permutation of 0..n, and each payload entry points at
-//! the original key now sitting in that slot (so the permutation is correct).
-//!
-//! Run: `cargo run --example sort_test`. Exits non-zero on any failure.
-
 use processing::prelude::*;
 
 fn u32s(b: &[u8]) -> Vec<u32> {
@@ -45,12 +38,10 @@ fn run_case(n: u32) -> error::Result<bool> {
     buffer_destroy(keys)?;
     buffer_destroy(payload)?;
 
-    // 1. ascending
     if let Some(i) = (1..n as usize).find(|&i| sorted_keys[i] < sorted_keys[i - 1]) {
         println!("  FAIL n={n}: not ascending at {i}: {} < {}", sorted_keys[i], sorted_keys[i - 1]);
         return Ok(false);
     }
-    // 2. permutation of 0..n
     let mut seen = vec![false; n as usize];
     for &p in &perm {
         if p >= n || seen[p as usize] {
@@ -59,7 +50,6 @@ fn run_case(n: u32) -> error::Result<bool> {
         }
         seen[p as usize] = true;
     }
-    // 3. payload tracks the keys: original key at payload[i] equals sorted key i
     if let Some(i) = (0..n as usize).find(|&i| orig_keys[perm[i] as usize] != sorted_keys[i]) {
         println!("  FAIL n={n}: payload[{i}] mismatch: orig[{}]={} != {}", perm[i], orig_keys[perm[i] as usize], sorted_keys[i]);
         return Ok(false);

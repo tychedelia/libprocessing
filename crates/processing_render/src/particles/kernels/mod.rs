@@ -284,8 +284,3 @@ pub fn particles_kernel_field() -> error::Result<Entity> {
     )?;
     Ok(entity)
 }
-
-// The old `attr_linear` / `attr_combine` / `attr_mix` / `attr_lookup1d` /
-// `attr_lookup2d` kernels were replaced by the component-generic attribute
-// algebra in `particles/algebra.rs` (`map` / `combine` / `mix` / `lookup`).
-// The `COMBINE_*` constants above are still the shared op selectors.

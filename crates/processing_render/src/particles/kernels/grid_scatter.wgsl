@@ -1,8 +1,3 @@
-// Places each particle's index into its cell's bucket of `sorted`, using an
-// atomic bump of the per-cell `cursor`. Final pass of the spatial hash (see
-// `particles/grid.rs`). After this, `sorted[starts[c] .. starts[c+1]]` are the
-// indices of the particles in cell `c`.
-
 import processing::particles::cell_of;
 
 struct Params {

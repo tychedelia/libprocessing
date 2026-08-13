@@ -30,7 +30,6 @@ impl Buffer {
         }
     }
 
-    /// Components per element (1..=4) from the buffer's element type, if typed.
     pub(crate) fn components(&self) -> Option<u32> {
         self.element_type
             .as_ref()
@@ -178,9 +177,6 @@ impl Buffer {
         Ok(PyList::new(py, values)?.into_any())
     }
 
-    /// Reduce this `f32` buffer to a single value on the GPU and read it back:
-    /// `op` is `SUM`, `MIN`, or `MAX`. (For per-component stats of a vec buffer,
-    /// extract a component first.)
     #[pyo3(signature = (op = "sum"))]
     pub fn reduce(&self, op: &str) -> PyResult<f32> {
         use processing::prelude::constants as c;
@@ -312,11 +308,6 @@ impl Compute {
     }
 }
 
-/// Set each `name=value` kwarg as a uniform/binding on a compute `entity`.
-///
-/// Free function (not a `Compute` method) so callers holding a *cached* compute
-/// entity — physics kernels, flock — can set params WITHOUT wrapping it in a
-/// temporary `Compute`, whose `Drop` would `compute_destroy` the shared entity.
 pub(crate) fn set_compute_kwargs(
     entity: Entity,
     kwargs: &Bound<'_, pyo3::types::PyDict>,

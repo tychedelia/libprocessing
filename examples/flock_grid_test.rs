@@ -1,29 +1,16 @@
-//! Validation harness for the grid-accelerated flock kernel.
-//!
-//! The boids steering math in `flock.wgsl` is a verbatim port of the previous
-//! brute-force kernel; the only new logic is sourcing neighbours from the
-//! spatial hash. So this test isolates and proves *that*: an inline `count_grid`
-//! kernel that walks the same 3x3x3 cell block as `flock` must find exactly the
-//! same neighbour set (within RADIUS) as an all-pairs `count_brute` — compared
-//! as exact integer counts (no float-order ambiguity). Then it runs the real
-//! flock kernel once as a smoke test (finite output, velocities actually change).
-//!
-//! Run: `cargo run --example flock_grid_test`. Exits non-zero on any mismatch.
-
 use processing::prelude::*;
 
 const N: u32 = 300;
-const CELL: f32 = 2.5; // grid cell size == neighbour radius (the flock invariant)
-const DIMS: [u32; 3] = [4, 4, 4]; // domain [0, 10)^3
+const CELL: f32 = 2.5;
+const DIMS: [u32; 3] = [4, 4, 4];
 const MIN: [f32; 3] = [0.0, 0.0, 0.0];
 
-// Neighbour counter over the spatial hash; mirrors flock.wgsl's iteration.
 const COUNT_GRID_SRC: &str = r#"
 struct GridParams {
     grid_min: vec3<f32>, cell_size: f32,
     dims_x: u32, dims_y: u32, dims_z: u32, _pad: u32,
 }
-const RADIUS2: f32 = 6.25; // 2.5^2
+const RADIUS2: f32 = 6.25;
 @group(0) @binding(0) var<storage, read>       position: array<f32>;
 @group(0) @binding(1) var<storage, read_write> counts:   array<u32>;
 @group(0) @binding(2) var<storage, read>       offsets:  array<u32>;
@@ -106,7 +93,6 @@ fn bytes_to_f32s(b: &[u8]) -> Vec<f32> {
         .collect()
 }
 
-// Deterministic pseudo-random in [0,1) from a u32 seed.
 fn rnd(seed: u32) -> f32 {
     let mut x = seed.wrapping_mul(747796405).wrapping_add(2891336453);
     x = ((x >> ((x >> 28).wrapping_add(4))) ^ x).wrapping_mul(277803737);
@@ -119,7 +105,6 @@ fn sketch() -> error::Result<bool> {
     let surface = surface_create_offscreen(1, 1, 1.0, TextureFormat::Rgba8Unorm)?;
     let _graphics = graphics_create(surface, 1, 1, TextureFormat::Rgba8Unorm)?;
 
-    // Boids in [0.5, 9.5]^3 with small velocities; deterministic.
     let mut pos = Vec::with_capacity((N * 3) as usize);
     let mut vel = Vec::with_capacity((N * 3) as usize);
     for i in 0..N {
@@ -147,7 +132,6 @@ fn sketch() -> error::Result<bool> {
 
     let mut ok = true;
 
-    // --- Neighbour-count equivalence (exact) ---
     let cg = compute_create(shader_create(COUNT_GRID_SRC)?)?;
     compute_set(cg, "position", shader_value::ShaderValue::Buffer(position))?;
     compute_set(cg, "counts", shader_value::ShaderValue::Buffer(counts_grid))?;
@@ -173,7 +157,6 @@ fn sketch() -> error::Result<bool> {
         println!("  FAIL neighbour count at particle {i}: grid {}, brute {}", g[i], b[i]);
     }
 
-    // --- Real flock kernel smoke test ---
     let flock = particles_kernel_flock()?;
     compute_set(flock, "position", shader_value::ShaderValue::Buffer(position))?;
     compute_set(flock, "velocity", shader_value::ShaderValue::Buffer(velocity))?;

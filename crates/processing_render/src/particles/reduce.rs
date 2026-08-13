@@ -1,12 +1,3 @@
-//! GPU→CPU reduction: reduce an `array<f32>` to a single value (sum / min / max)
-//! and read it back to the host. The basis for host-side adaptive logic — alive
-//! count, bounding box, centroid — that the fixed GPU pipeline can't feed back
-//! on its own.
-//!
-//! A multi-level tree reduction (`reduce.wgsl`): each level reduces blocks of
-//! 256 to one partial each, until a single value remains. Element counts are
-//! passed as a uniform so the per-level scratch buffers can be reused/oversized.
-
 use std::sync::Mutex;
 
 use bevy::prelude::Entity;
@@ -22,14 +13,11 @@ use crate::{
 const BLOCK: u32 = 256;
 const SHADER: &str = "embedded://processing_render/particles/kernels/reduce.wgsl";
 
-/// Combine mode for [`reduce`].
 pub const REDUCE_OP_SUM: u32 = 0;
 pub const REDUCE_OP_MIN: u32 = 1;
 pub const REDUCE_OP_MAX: u32 = 2;
 
 static COMPUTE: Mutex<Option<Entity>> = Mutex::new(None);
-/// Per-level scratch, reused across calls; grown as needed. Oversizing is fine —
-/// the kernel reduces `count` elements, not the whole buffer.
 static SCRATCH: Mutex<Vec<(Entity, u64)>> = Mutex::new(Vec::new());
 
 fn reduce_compute() -> Result<Entity> {
@@ -59,8 +47,6 @@ fn scratch(level: usize, bytes: u64) -> Result<Entity> {
     Ok(new_entity)
 }
 
-/// Reduce every `f32` in `values` to a single value under `op` (`REDUCE_OP_*`),
-/// returned to the host.
 pub fn reduce(values: Entity, op: u32) -> Result<f32> {
     let n = (buffer_size(values)? / 4) as u32;
     if n == 0 {

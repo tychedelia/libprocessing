@@ -1,10 +1,3 @@
-// Counts how many particles fall in each cell of a bounded uniform grid, via
-// atomic increments. First pass of the spatial hash (see `particles/grid.rs`).
-//
-// `counts` is the CSR offset buffer, length num_cells+1; only [0, num_cells)
-// are touched here (the trailing slot stays 0 so the later exclusive scan
-// yields the total). Out-of-domain particles clamp to edge cells.
-
 import processing::particles::cell_of;
 
 struct Params {

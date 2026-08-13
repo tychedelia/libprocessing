@@ -143,14 +143,6 @@ pub fn particles_emit(
     })
 }
 
-/// Grid-accelerated flocking in one call: rebuild `grid` from the particle
-/// positions, bind its neighbour structure into the flock kernel, then apply.
-///
-/// This is only the *velocity* (steering) pass — follow it with the `integrate`
-/// kernel to move the particles, e.g.
-/// `particles_flock(p, flock, &grid)?; particles_apply(p, integrate)?;`.
-/// `grid` must be created for this system's capacity with
-/// `cell_size >= neighbor_distance`.
 pub fn particles_flock(
     particles_entity: Entity,
     flock_entity: Entity,
@@ -179,7 +171,6 @@ pub fn particles_flock(
     particles_apply(particles_entity, flock_entity)
 }
 
-/// The cached neighbour-gather compute pipeline.
 static NEIGHBOR_COMPUTE: Mutex<Option<Entity>> = Mutex::new(None);
 
 fn neighbor_compute() -> error::Result<Entity> {
@@ -194,16 +185,6 @@ fn neighbor_compute() -> error::Result<Entity> {
     Ok(entity)
 }
 
-/// Grid-accelerated neighbour gather: rebuild `grid` from the current positions,
-/// then for each particle accumulate a falloff-weighted gather of the `source`
-/// buffer over neighbours within `radius`, writing `out`. `op` selects
-/// sum / mean(smoothing) / count(density); `components` is the source/out stride
-/// (ignored by count, which writes a scalar). `out` must be distinct from
-/// `source` and `position` (the gather reads all neighbours while writing, so an
-/// in-place alias would be a read+read_write hazard).
-///
-/// Invariant: `grid.cell_size >= radius`, so the 3x3x3 cell block covers every
-/// neighbour within `radius` (same as flock).
 pub fn particles_gather(
     particles_entity: Entity,
     grid: &Grid,

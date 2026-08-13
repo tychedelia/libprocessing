@@ -31,7 +31,6 @@ use processing_render::{
     REDUCE_LENGTH, REDUCE_MAX, REDUCE_MEAN, REDUCE_MIN, REDUCE_SUM, REDUCE_SUMSQ,
 };
 
-/// Parse a `op=` mode string into the internal `map` op code.
 fn parse_map_op(s: &str) -> PyResult<u32> {
     match () {
         _ if s.eq_ignore_ascii_case(c::AFFINE) => Ok(MAP_AFFINE),
@@ -85,7 +84,6 @@ fn parse_generate_mode(s: &str) -> PyResult<u32> {
     }
 }
 
-// neighbour-gather op codes, matching `neighbor.wgsl` (OP_SUM/MEAN/COUNT).
 const NEIGHBOR_SUM: u32 = 0;
 const NEIGHBOR_MEAN: u32 = 1;
 const NEIGHBOR_COUNT: u32 = 2;
@@ -113,15 +111,11 @@ fn parse_falloff(s: &str) -> PyResult<u32> {
     }
 }
 
-/// A spatial hash grid for a particle system — the O(N) neighbourhood structure
-/// behind `p.flock(...)`. Create with `p.create_grid(...)`; rebuilt each frame
-/// inside `flock`.
 #[pyclass(unsendable)]
 pub struct Grid {
     pub(crate) inner: processing_render::particles::grid::Grid,
 }
 
-/// The grid-accelerated flock kernel, compiled once and reused.
 static FLOCK_COMPUTE: std::sync::Mutex<Option<Entity>> = std::sync::Mutex::new(None);
 
 fn flock_compute() -> PyResult<Entity> {
@@ -134,14 +128,9 @@ fn flock_compute() -> PyResult<Entity> {
     Ok(e)
 }
 
-/// Built-in simulation kernels are compiled once and reused across `apply(...)`
-/// calls (their per-call params are set on the shared uniform right before each
-/// dispatch; the render queue serialises upload-then-dispatch so this is safe).
 static PHYSICS_COMPUTES: std::sync::Mutex<Option<HashMap<String, Entity>>> =
     std::sync::Mutex::new(None);
 
-/// Resolve a simulation-kernel op name to its cached compute entity, creating it
-/// on first use. Returns `None` if `name` is not a (no-argument) built-in kernel.
 fn physics_compute(name: &str) -> PyResult<Option<Entity>> {
     let lower = name.to_ascii_lowercase();
     if let Some(cache) = PHYSICS_COMPUTES.lock().unwrap().as_ref() {
@@ -212,11 +201,6 @@ fn kw_bool(kwargs: Option<&Bound<'_, PyDict>>, key: &str, default: bool) -> PyRe
     }
 }
 
-/// Resolve the two scalar params for a `MAP` op under semantic names, since
-/// `p0`/`p1` mean different things per mode. AFFINE reads `scale`/`offset`
-/// (mirroring `generate`/`combine`), CLAMP reads `lo`/`hi`, the comparison ops
-/// read `threshold`/`epsilon`; the value-only ops (abs/negate/…) take neither.
-/// Defaults are per-mode identities (AFFINE `scale=1`, CLAMP `hi=1`).
 fn map_params(kwargs: Option<&Bound<'_, PyDict>>, op: u32) -> PyResult<(f32, f32)> {
     Ok(match op {
         MAP_AFFINE => (
@@ -232,8 +216,6 @@ fn map_params(kwargs: Option<&Bound<'_, PyDict>>, op: u32) -> PyResult<(f32, f32
     })
 }
 
-/// The scalar-param kwarg names [`map_params`] reads for a given `map` op, so
-/// [`reject_unknown_kwargs`] can flag misspellings precisely per mode.
 fn map_param_keys(op: u32) -> &'static [&'static str] {
     match op {
         MAP_AFFINE => &["scale", "offset"],
@@ -243,9 +225,6 @@ fn map_param_keys(op: u32) -> &'static [&'static str] {
     }
 }
 
-/// Error if any provided kwarg isn't in `valid`. Algebra verbs read their params
-/// by name with defaults, so a misspelled param would otherwise be silently
-/// ignored (applying the default) and produce a wrong result with no error.
 fn reject_unknown_kwargs(kwargs: Option<&Bound<'_, PyDict>>, valid: &[&str]) -> PyResult<()> {
     let Some(kwargs) = kwargs else {
         return Ok(());
@@ -262,8 +241,6 @@ fn reject_unknown_kwargs(kwargs: Option<&Bound<'_, PyDict>>, valid: &[&str]) -> 
     Ok(())
 }
 
-/// Parse the `op=` mode kwarg (a string) into an internal op code, or use the
-/// default code when absent.
 fn kw_op(
     kwargs: Option<&Bound<'_, PyDict>>,
     default: u32,
@@ -456,9 +433,6 @@ impl Particles {
         ))
     }
 
-    /// Resolve an algebra operand — a `Buffer`, or an attribute name/`Attribute`
-    /// (materialized on demand) — to its backing buffer entity and component
-    /// count (1..=4).
     fn resolve_operand(&self, val: &Bound<'_, PyAny>) -> PyResult<(Entity, u32)> {
         if let Ok(b) = val.extract::<PyRef<Buffer>>() {
             let comp = b.components().ok_or_else(|| {
@@ -483,14 +457,12 @@ impl Particles {
         Ok((buf, comp))
     }
 
-    /// Required operand from a kwarg, else a clear error.
     fn operand(&self, kwargs: Option<&Bound<'_, PyDict>>, key: &str) -> PyResult<(Entity, u32)> {
         let val = kw(kwargs, key)
             .ok_or_else(|| PyRuntimeError::new_err(format!("apply(): missing operand '{key}'")))?;
         self.resolve_operand(&val)
     }
 
-    /// Optional destination kwarg; defaults to `in_place` (the first operand).
     fn dest(&self, kwargs: Option<&Bound<'_, PyDict>>, in_place: Entity) -> PyResult<Entity> {
         match kw(kwargs, "out") {
             Some(v) => Ok(self.resolve_operand(&v)?.0),
@@ -534,25 +506,18 @@ impl Particles {
         })
     }
 
-    /// Dispatch a named operation (a built-in simulation kernel or an algebra
-    /// verb) from `apply(...)`. Private — not exposed to Python.
     fn apply_named(&self, name: &str, kwargs: Option<&Bound<'_, PyDict>>) -> PyResult<()> {
         fn rt(e: impl std::fmt::Display) -> PyErr {
             PyRuntimeError::new_err(format!("{e}"))
         }
 
-        // Simulation kernels: shared cached compute, kwargs are params, particle
-        // attribute buffers auto-bind by name.
         if let Some(entity) = physics_compute(name)? {
             if let Some(kwargs) = kwargs {
-                // `entity` is cached (shared); set params directly so we never
-                // wrap it in a temporary `Compute` that would destroy it on drop.
                 crate::compute::set_compute_kwargs(entity, kwargs)?;
             }
             return particles_apply(self.entity, entity).map_err(rt);
         }
 
-        // Attribute-algebra verbs: explicit operands, in-place by default.
         if name.eq_ignore_ascii_case(c::MAP) {
             let (a, comp) = self.operand(kwargs, "a")?;
             let out = self.dest(kwargs, a)?;
@@ -566,9 +531,6 @@ impl Particles {
             reject_unknown_kwargs(kwargs, &["a", "b", "out", "op", "b_scale", "b_offset"])?;
             let (a, comp) = self.operand(kwargs, "a")?;
             let (b, b_comp) = self.operand(kwargs, "b")?;
-            // The kernel strides `b` by `a`'s component count, so they must match
-            // (otherwise `b` is read across other particles' data — silent
-            // corruption). No broadcast — pack a scalar to the width first.
             if b_comp != comp {
                 return Err(PyValueError::new_err(format!(
                     "apply(combine): `a` has {comp} components but `b` has {b_comp} (must match)"
@@ -587,9 +549,6 @@ impl Particles {
             let (a, comp) = self.operand(kwargs, "a")?;
             let (b, b_comp) = self.operand(kwargs, "b")?;
             let (t, t_comp) = self.operand(kwargs, "t")?;
-            // `b` must match `a`'s width (strided by `comp`); `t` is one scalar
-            // per particle, broadcast across components — both are read wrong
-            // otherwise (silent corruption).
             if b_comp != comp {
                 return Err(PyValueError::new_err(format!(
                     "apply(mix): `a` has {comp} components but `b` has {b_comp} (must match)"
@@ -673,22 +632,16 @@ impl Particles {
                 Some(v) => parse_falloff(&v.extract::<String>()?)?,
                 None => FALLOFF_SMOOTHSTEP,
             };
-            // The 3x3x3 cell block only covers `cell_size`; default the query
-            // radius to it (and never let it exceed it — neighbours past one cell
-            // would be silently missed).
             let cell = grid.inner.params.cell_size;
             let radius = kw_f32(kwargs, "radius", cell)?.min(cell);
 
             let (out, out_comp) = self.operand(kwargs, "out")?;
-            // count/density ignore the source and write a scalar; sum/mean gather
-            // the source's components per particle (out must match).
             let (a, components) = if op == NEIGHBOR_COUNT {
                 if out_comp != 1 {
                     return Err(PyValueError::new_err(
                         "apply(neighbor, op=count/density): `out` must be a scalar (1 component)",
                     ));
                 }
-                // `a` is optional here; bind `position` as a harmless placeholder.
                 let a = match kw(kwargs, "a") {
                     Some(_) => self.operand(kwargs, "a")?.0,
                     None => {
@@ -762,12 +715,6 @@ impl Particles {
         Ok(Buffer::from_entity(buf, Some(element_type)))
     }
 
-    /// Allocate a GPU index buffer of `index_count` u32s and attach it as this
-    /// system's connectivity, returning it for a compute shader to fill. Bind it
-    /// into a compute (`gen.set(indices=idx)`) and write the connectivity on the
-    /// GPU; then `particles(p, topology=TRIANGLES)` (or `LINES`) rasterizes the
-    /// particle positions through those generated indices via one indexed
-    /// indirect draw — no source mesh, no CPU index list.
     pub fn index_buffer(&self, index_count: u32) -> PyResult<Buffer> {
         let entity = particles_set_connectivity(self.entity, index_count)
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
@@ -777,16 +724,8 @@ impl Particles {
         ))
     }
 
-    /// Apply an operation to the particle system, mirroring `filter(...)`:
-    /// `kind` is either an operation constant (a string, e.g. `NOISE`, `MAP`) or a
-    /// custom `Compute` (a user kernel). Params and operands are keyword args;
-    /// operands accept an attribute name or a `Buffer`, and the destination
-    /// `out=` defaults to in-place on the first operand. The verb param is `kind`
-    /// (not `op`) so verbs whose mode is passed as `op=` (MAP, COMBINE) don't
-    /// collide with the positional argument.
     #[pyo3(signature = (kind, **kwargs))]
     pub fn apply(&self, kind: &Bound<'_, PyAny>, kwargs: Option<&Bound<'_, PyDict>>) -> PyResult<()> {
-        // A custom kernel (mirrors filter() accepting a Shader).
         if let Ok(compute) = kind.extract::<PyRef<Compute>>() {
             if let Some(kwargs) = kwargs {
                 compute.set(Some(kwargs))?;
@@ -837,10 +776,6 @@ impl Particles {
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    /// Stream-compact by keep-flags: `flags` (an f32 attribute or buffer,
-    /// non-zero = keep) is scanned and the dense list of kept particle indices
-    /// is written into `out` (a u32 buffer); returns the kept count. Pair with
-    /// `p.apply(MAP, a=..., op=GREATER, threshold=..., out="flag")` to build the flags.
     pub fn compact(&self, flags: &Bound<'_, PyAny>, out: &Buffer) -> PyResult<u32> {
         let (flag_buf, _) = self.resolve_operand(flags)?;
         compact_indices(flag_buf, out.entity)
@@ -930,9 +865,6 @@ impl Particles {
         Ok(Compute::from_entity(entity))
     }
 
-    /// Create a spatial hash grid for this particle system: an axis-aligned
-    /// domain of `dims` cells of `cell_size`, starting at `min`. For flocking,
-    /// keep `cell_size >= neighbor_distance`.
     pub fn create_grid(
         &self,
         min: [f32; 3],
@@ -951,22 +883,12 @@ impl Particles {
         Ok(Grid { inner })
     }
 
-    /// Grid-accelerated boids: rebuild `grid` from the current positions and
-    /// steer `velocity` (the force pass). Keyword args set the flock params
-    /// (`sep_distance`, `neighbor_distance`, `weight_*`, `max_speed`, ...).
-    /// Follow with `p.apply(INTEGRATE, ...)` to move the particles.
     #[pyo3(signature = (grid, **kwargs))]
     pub fn flock(&self, grid: &Grid, kwargs: Option<&Bound<'_, PyDict>>) -> PyResult<()> {
         let flock = flock_compute()?;
         if let Some(kwargs) = kwargs {
-            // `flock` is cached (shared); set params directly so we never wrap it
-            // in a temporary `Compute` that would destroy it on drop.
             crate::compute::set_compute_kwargs(flock, kwargs)?;
         }
-        // Enforce the correctness invariant: the 3x3x3 cell scan only reaches
-        // `cell_size`, so a `neighbor_distance` beyond it would silently miss
-        // neighbours. Clamp it (mirrors the neighbor-gather path), overriding
-        // whatever `set_compute_kwargs` set.
         let cell = grid.inner.params.cell_size;
         let neighbor_distance = kw_f32(kwargs, "neighbor_distance", cell)?.min(cell);
         compute_set(

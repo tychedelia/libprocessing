@@ -653,12 +653,7 @@ pub enum DrawCommand {
     Geometry(Entity),
     Particles {
         particles: Entity,
-        /// `None` rasterizes the particle buffers directly (the direct-
-        /// rasterization path, primitive picked by `topology`); `Some` instances
-        /// `geometry` once per particle (`topology` ignored).
         geometry: Option<Entity>,
-        /// Direct-raster primitive: `PointList` (rung 1) or `LineList`/
-        /// `TriangleList` with GPU-generated connectivity (rung 2).
         topology: crate::geometry::Topology,
     },
     BlendMode(Option<BlendState>),

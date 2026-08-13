@@ -1,7 +1,3 @@
-// Map a per-particle `density` scalar (from apply(NEIGHBOR, op=DENSITY)) to a
-// color: cool/dim where sparse, warm/bright where dense. Both are particle
-// attributes, auto-bound by p.apply.
-
 struct Params {
     scale: f32,
 }
@@ -18,7 +14,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let t = clamp(density[i] * params.scale, 0.0, 1.0);
     let cool = vec3<f32>(0.10, 0.22, 0.70);
     let warm = vec3<f32>(1.00, 0.55, 0.15);
-    let rgb = mix(cool, warm, t) * (0.35 + 1.1 * t); // brighter where dense
+    let rgb = mix(cool, warm, t) * (0.35 + 1.1 * t);
 
     color[i * 4u + 0u] = rgb.x;
     color[i * 4u + 1u] = rgb.y;

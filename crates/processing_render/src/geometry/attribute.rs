@@ -317,11 +317,6 @@ pub fn default_attribute_init(name: &str, format: AttributeFormat) -> Vec<f32> {
     }
 }
 
-/// Interns custom attributes by name so `Attribute(name, fmt)` is value-like:
-/// the same name always resolves to the same entity (and thus the same particle
-/// buffer), however many times it's constructed. This mirrors how built-in
-/// attributes are singletons and how string operand names resolve, removing the
-/// footgun where two `Attribute("rest", ..)` objects would be distinct buffers.
 #[derive(Resource, Default)]
 pub struct AttributeRegistry {
     by_name: std::collections::HashMap<u64, (Entity, AttributeFormat)>,
@@ -333,12 +328,9 @@ pub fn create(
     builtins: Res<BuiltinAttributes>,
     mut registry: ResMut<AttributeRegistry>,
 ) -> Result<Entity> {
-    // Built-in names are already singletons.
     if let Some(entity) = builtins.by_name(&name) {
         return Ok(entity);
     }
-    // Custom attributes intern by name: same name -> same entity. Redeclaring a
-    // name with a different format is a bug, so surface it clearly.
     let id = hash_attr_name(&name);
     if let Some(&(entity, existing)) = registry.by_name.get(&id) {
         if existing != format {

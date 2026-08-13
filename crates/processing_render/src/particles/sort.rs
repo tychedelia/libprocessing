@@ -1,12 +1,3 @@
-//! GPU bitonic sort: sorts a `keys` buffer ascending while permuting a parallel
-//! `payload` (`u32`) buffer in lockstep. With `payload[i] = i` on input, the
-//! result is the sorting permutation — the keystone for depth-sorting
-//! transparent particles (key = camera distance) and for spatial binning.
-//!
-//! Orchestrated from the CPU as `log²(n)` compare-exchange dispatches
-//! (`bitonic.wgsl`). Length must be a power of two; the caller pads (with a
-//! sentinel key) when the real count isn't.
-
 use std::sync::Mutex;
 
 use bevy::prelude::Entity;
@@ -31,9 +22,6 @@ fn bitonic_compute() -> Result<Entity> {
     Ok(compute)
 }
 
-/// Sort `keys` (an `array<f32>`) ascending, moving `payload` (an equal-length
-/// `array<u32>`) in lockstep. `keys` and `payload` must have the same length,
-/// which must be a power of two.
 pub fn bitonic_sort_by_key(keys: Entity, payload: Entity) -> Result<()> {
     let n = (buffer_size(keys)? / 4) as u32;
     if n <= 1 {

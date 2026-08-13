@@ -1,8 +1,3 @@
-# Direct-rasterization smoke test: draw a particle `position` buffer straight
-# as a 1px point cloud, with no instanced geometry. `particles(p)` (no shape
-# argument) takes the custom point-cloud render pipeline — positions are pulled
-# from the storage buffer by vertex index, projected by the camera, one point
-# each. This is rung 1 of the direct-raster path (no connectivity, no indirect).
 from mewnala import *
 from math import cos, sin
 from random import uniform
@@ -36,7 +31,7 @@ def draw():
     camera_position(cos(t) * r, BOUND * 0.6, sin(t) * r)
     camera_look_at(0.0, 0.0, 0.0)
 
-    particles(p)  # no geometry -> direct point-cloud raster
+    particles(p)
 
 
 run()

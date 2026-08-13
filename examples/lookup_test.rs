@@ -1,16 +1,7 @@
-//! Validation harness for the `lookup` algebra verb (task #6): sample a texture
-//! by a per-particle coordinate into a flat RGBA `dst`. Exercises both the 1-D
-//! (in_components=1) and 2-D (in_components=2, interleaved uv) paths, plus the
-//! sampler-binding fix (a `Texture` value bound to a `sampler` param).
-//!
-//! Uses pure 0/1 primary colours + nearest sampling so texel reads are exact.
-//! Run: `cargo run --example lookup_test`. Exits non-zero on mismatch.
-
 use bevy::prelude::Entity;
 use bevy::render::render_resource::Extent3d;
 use processing::prelude::*;
 
-// R,G,B,W as RGBA8 bytes.
 const RED: [u8; 4] = [255, 0, 0, 255];
 const GREEN: [u8; 4] = [0, 255, 0, 255];
 const BLUE: [u8; 4] = [0, 0, 255, 255];
@@ -40,7 +31,7 @@ fn ramp_image(width: u32, height: u32, texels: &[[u8; 4]]) -> error::Result<Enti
         data,
         TextureFormat::Rgba8Unorm,
     )?;
-    image_set_sampler(img, 1, 0, 0)?; // nearest, clamp
+    image_set_sampler(img, 1, 0, 0)?;
     Ok(img)
 }
 
@@ -51,7 +42,6 @@ fn sketch() -> error::Result<bool> {
 
     let mut ok = true;
 
-    // --- 1-D: 4-wide ramp, sample at texel centres ---
     let ramp = ramp_image(4, 1, &[RED, GREEN, BLUE, WHITE])?;
     let t = vec![0.125f32, 0.375, 0.625, 0.875];
     let op_in = buffer_create_with_data(to_bytes(&t))?;
@@ -59,10 +49,10 @@ fn sketch() -> error::Result<bool> {
     lookup(dst, op_in, ramp, 1, 1.0, 0.0, 1.0, 0.0, 1.0)?;
     let got = f32s(&buffer_read(dst)?);
     let want = vec![
-        1.0, 0.0, 0.0, 1.0, // red
-        0.0, 1.0, 0.0, 1.0, // green
-        0.0, 0.0, 1.0, 1.0, // blue
-        1.0, 1.0, 1.0, 1.0, // white
+        1.0, 0.0, 0.0, 1.0,
+        0.0, 1.0, 0.0, 1.0,
+        0.0, 0.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0,
     ];
     if approx(&got, &want) {
         println!("  PASS lookup 1-D ramp");
@@ -73,14 +63,12 @@ fn sketch() -> error::Result<bool> {
     buffer_destroy(op_in)?;
     buffer_destroy(dst)?;
 
-    // --- 2-D: 2x2 texture, sample at 4 texel centres ---
-    // row0 = [red, green], row1 = [blue, white]
     let tex2 = ramp_image(2, 2, &[RED, GREEN, BLUE, WHITE])?;
     let uv = vec![
-        0.25f32, 0.25, // red
-        0.75, 0.25, // green
-        0.25, 0.75, // blue
-        0.75, 0.75, // white
+        0.25f32, 0.25,
+        0.75, 0.25,
+        0.25, 0.75,
+        0.75, 0.75,
     ];
     let op_in2 = buffer_create_with_data(to_bytes(&uv))?;
     let dst2 = buffer_create_with_data(to_bytes(&vec![0.0; 16]))?;

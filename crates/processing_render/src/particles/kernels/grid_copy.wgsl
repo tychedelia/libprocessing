@@ -1,8 +1,3 @@
-// Seeds the per-cell write cursor from the scanned CSR starts, so the scatter
-// pass can atomically bump each cell independently. Part of the spatial hash
-// (see `particles/grid.rs`). `cursor` has one slot per cell (num_cells);
-// `starts` has num_cells+1.
-
 @group(0) @binding(0) var<storage, read>       starts: array<u32>;
 @group(0) @binding(1) var<storage, read_write> cursor: array<u32>;
 

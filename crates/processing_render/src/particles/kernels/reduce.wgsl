@@ -1,8 +1,3 @@
-// One level of a tree reduction over `input[0..count]` — each workgroup reduces
-// its 256-element block to a single value in `output[workgroup]`, combining by
-// `mode` (0 sum · 1 min · 2 max). Driven multi-level by `particles/reduce.rs`.
-// `count` is passed explicitly so the scratch buffers may be oversized/reused.
-
 struct Params {
     mode: u32,
     count: u32,

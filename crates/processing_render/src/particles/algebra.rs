@@ -1,18 +1,3 @@
-//! The attribute-algebra verbs: component-generic per-particle operations over
-//! flat `array<f32>` buffers. Each verb is one WESL source specialized by the
-//! `in_place` feature flag into two pipelines — an out-of-place layout (read
-//! inputs + write `dst`) and an in-place layout (a single `read_write` binding).
-//!
-//! Why two pipelines instead of aliasing one buffer to a read and a read_write
-//! binding: that aliasing is a *fatal* wgpu validation error (see
-//! `examples/alias_spike.rs`). So the dispatchers pick a variant by buffer
-//! identity — `dst == first_operand` → in-place — and reject any `dst` that
-//! aliases a read-only operand *before* it reaches the GPU.
-//!
-//! Operand model: one thread per particle, looping `components` (1–4) internally
-//! — so a Float3/Float4 attribute is fully processed (the old scalar `attr_*`
-//! kernels indexed per-float and left most of a wide attribute untouched).
-
 use std::sync::Mutex;
 
 use bevy::prelude::Entity;
@@ -24,18 +9,13 @@ use crate::{buffer_size, compute_dispatch, compute_set, shader_create_with_featu
 
 const WG: u32 = 64;
 
-// --- map: unary dst = f(a) ---------------------------------------------------
-
-/// `op` selector for [`map`].
-pub const MAP_AFFINE: u32 = 0; // p0 * x + p1
+pub const MAP_AFFINE: u32 = 0;
 pub const MAP_ABS: u32 = 1;
 pub const MAP_NEGATE: u32 = 2;
-pub const MAP_CLAMP: u32 = 3; // clamp(x, p0, p1)
+pub const MAP_CLAMP: u32 = 3;
 pub const MAP_FLOOR: u32 = 4;
 pub const MAP_SQUARE: u32 = 5;
 pub const MAP_SQRT: u32 = 6;
-// Comparison predicates → 1.0 / 0.0 keep-flags (the group-predicate op for
-// selection + compaction). `p0` is the threshold; `p1` is the equality epsilon.
 pub const MAP_GREATER: u32 = 7;
 pub const MAP_LESS: u32 = 8;
 pub const MAP_GEQ: u32 = 9;
@@ -88,7 +68,6 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 "#;
 
-/// `(out_of_place, in_place)` compute pipelines for a verb source, compiled once.
 struct Variants {
     out_of_place: Entity,
     in_place: Entity,
@@ -104,7 +83,6 @@ fn variants(cache: &Mutex<Option<(Entity, Entity)>>, src: &str) -> Result<Varian
     }
     let out_of_place = shader_create_with_features(src, &[("in_place", false)])?;
     let in_place = shader_create_with_features(src, &[("in_place", true)])?;
-    // create_compute lives at the crate root; compile the pipelines now.
     let out_of_place = crate::compute_create(out_of_place)?;
     let in_place = crate::compute_create(in_place)?;
     *guard = Some((out_of_place, in_place));
@@ -130,8 +108,6 @@ fn check_components(verb: &str, components: u32) -> Result<()> {
     Ok(())
 }
 
-/// The read_write target must not also be bound as a read-only operand — that
-/// aliasing is a fatal wgpu validation error, so reject it before dispatch.
 fn ensure_no_alias(verb: &str, rw: Entity, reads: &[Entity]) -> Result<()> {
     if reads.contains(&rw) {
         return Err(ProcessingError::InvalidArgument(format!(
@@ -142,9 +118,6 @@ fn ensure_no_alias(verb: &str, rw: Entity, reads: &[Entity]) -> Result<()> {
     Ok(())
 }
 
-/// `dst = op(a)`, per component. `dst` may equal `a` (in-place); it must not be
-/// any other buffer that would alias — `map` has only the one operand, so the
-/// only choice is in-place vs a fresh `dst`.
 pub fn map(dst: Entity, a: Entity, components: u32, op: u32, p0: f32, p1: f32) -> Result<()> {
     check_components("map", components)?;
     let v = variants(&MAP, MAP_SRC)?;
@@ -169,11 +142,6 @@ pub fn map(dst: Entity, a: Entity, components: u32, op: u32, p0: f32, p1: f32) -
         dispatch_particles(c, floats, components)
     }
 }
-
-// --- combine: binary dst = a OP (b * b_scale + b_offset) ---------------------
-
-// `op` selector reuses the COMBINE_* constants from `kernels`
-// (ADD/SUB/MUL/DIV/MIN/MAX/POW = 0..=6).
 
 const COMBINE_SRC: &str = r#"
 struct Params {
@@ -218,8 +186,6 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 static COMBINE: Mutex<Option<(Entity, Entity)>> = Mutex::new(None);
 
-/// `dst = a OP (b * b_scale + b_offset)`, per component. `dst` may equal `a`
-/// (in-place); it may not alias `b`.
 pub fn combine(
     dst: Entity,
     a: Entity,
@@ -252,8 +218,6 @@ pub fn combine(
     compute_set(c, "b_offset", ShaderValue::Float(b_offset))?;
     dispatch_particles(c, floats, components)
 }
-
-// --- mix: dst = lerp(a, b, t_particle) ---------------------------------------
 
 const MIX_SRC: &str = r#"
 struct Params {
@@ -289,10 +253,6 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 static MIX: Mutex<Option<(Entity, Entity)>> = Mutex::new(None);
 
-/// `dst = lerp(a, b, t)` per component, where `t` is one value per particle
-/// (length = particle count) broadcast across all components — so a per-particle
-/// scalar like `life` drives a Float4 `color` mix directly. `dst` may equal `a`
-/// (in-place); it may not alias `b` or `t`.
 pub fn mix(
     dst: Entity,
     a: Entity,
@@ -327,8 +287,6 @@ pub fn mix(
     compute_set(c, "t_clamp", ShaderValue::UInt(t_clamp as u32))?;
     dispatch_particles(c, floats, components)
 }
-
-// --- lookup: dst(RGBA) = tex(op_in) ------------------------------------------
 
 const LOOKUP_SRC: &str = r#"
 struct Params {
@@ -385,13 +343,6 @@ fn single_pipeline(cache: &Mutex<Option<Entity>>, src: &str) -> Result<Entity> {
     Ok(compute)
 }
 
-/// `dst` (4 floats per particle, RGBA) = `tex` sampled at coordinates derived
-/// from `op_in`. `in_components` = 1 (1-D ramp; samples the `v = 0.5` row) or 2
-/// (2-D; `op_in` is interleaved uv). Sampling is clamp-only for now (task #20
-/// will expose filter/address modes). `dst` must be distinct from `op_in`.
-///
-/// This merges the old `attr_lookup1d` (which wrote four separate arrays) and
-/// `attr_lookup2d` (which demanded separate u/v arrays) into one flat-`dst` verb.
 #[allow(clippy::too_many_arguments)]
 pub fn lookup(
     dst: Entity,
@@ -421,14 +372,11 @@ pub fn lookup(
     compute_set(c, "color_scale", ShaderValue::Float(color_scale))?;
     compute_set(c, "tex", ShaderValue::Texture(tex))?;
     compute_set(c, "samp", ShaderValue::Texture(tex))?;
-    let n = (buffer_size(dst)? / 16) as u32; // 4 floats * 4 bytes per particle
+    let n = (buffer_size(dst)? / 16) as u32;
     compute_dispatch(c, n.div_ceil(WG), 1, 1)
 }
 
-// --- reduce_components: scalar dst = reduce(src over its components) ----------
-
-/// `op` selector for [`reduce_components`].
-pub const REDUCE_LENGTH: u32 = 0; // sqrt(sum of squares) — e.g. speed = |velocity|
+pub const REDUCE_LENGTH: u32 = 0;
 pub const REDUCE_SUM: u32 = 1;
 pub const REDUCE_MIN: u32 = 2;
 pub const REDUCE_MAX: u32 = 3;
@@ -473,9 +421,6 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 static REDUCE: Mutex<Option<Entity>> = Mutex::new(None);
 
-/// `dst` (one value per particle) = a reduction over the `components` of `src`.
-/// The one-liner behind `speed = |velocity|` (`REDUCE_LENGTH`, components=3).
-/// `dst` must be distinct from `src`.
 pub fn reduce_components(dst: Entity, src: Entity, components: u32, op: u32) -> Result<()> {
     check_components("reduce_components", components)?;
     ensure_no_alias("reduce_components", dst, &[src])?;
@@ -487,8 +432,6 @@ pub fn reduce_components(dst: Entity, src: Entity, components: u32, op: u32) -> 
     let n = (buffer_size(dst)? / 4) as u32;
     compute_dispatch(c, n.div_ceil(WG), 1, 1)
 }
-
-// --- extract: scalar dst = src[.., index] ------------------------------------
 
 const EXTRACT_SRC: &str = r#"
 struct Params { components: u32, index: u32 }
@@ -508,8 +451,6 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 static EXTRACT: Mutex<Option<Entity>> = Mutex::new(None);
 
-/// `dst` (one value per particle) = component `index` of each `src` element.
-/// The swizzle/gather primitive (e.g. grab `.y`). `dst` must be distinct from `src`.
 pub fn extract(dst: Entity, src: Entity, components: u32, index: u32) -> Result<()> {
     check_components("extract", components)?;
     if index >= components {
@@ -526,8 +467,6 @@ pub fn extract(dst: Entity, src: Entity, components: u32, index: u32) -> Result<
     let n = (buffer_size(dst)? / 4) as u32;
     compute_dispatch(c, n.div_ceil(WG), 1, 1)
 }
-
-// --- pack: dst (2..4 components) assembled from scalar source buffers ---------
 
 const PACK_SRC: &str = r#"
 struct Params { components: u32 }
@@ -552,7 +491,6 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 "#;
 
-// One pipeline per output width: index 0 -> 2 comps, 1 -> 3, 2 -> 4.
 static PACK: Mutex<Option<[Entity; 3]>> = Mutex::new(None);
 
 fn pack_pipeline(components: u32) -> Result<Entity> {
@@ -575,9 +513,6 @@ fn pack_pipeline(components: u32) -> Result<Entity> {
     Ok(guard.unwrap()[(components - 2) as usize])
 }
 
-/// Assemble `dst` (with `sources.len()` components, 2..=4) from independent
-/// scalar source buffers — the inverse of [`extract`], e.g. build a Float3
-/// position from separate x/y/z buffers. `dst` must be distinct from every source.
 pub fn pack(dst: Entity, sources: &[Entity]) -> Result<()> {
     let components = sources.len() as u32;
     if !(2..=4).contains(&components) {
@@ -602,12 +537,9 @@ pub fn pack(dst: Entity, sources: &[Entity]) -> Result<()> {
     compute_dispatch(c, n.div_ceil(WG), 1, 1)
 }
 
-// --- generate: dst = hash(id, seed) -> random --------------------------------
-
-/// `mode` selector for [`generate`].
-pub const GEN_UNIFORM: u32 = 0; // [0, 1)
-pub const GEN_SIGNED: u32 = 1; // [-1, 1)
-pub const GEN_GAUSSIAN: u32 = 2; // standard normal
+pub const GEN_UNIFORM: u32 = 0;
+pub const GEN_SIGNED: u32 = 1;
+pub const GEN_GAUSSIAN: u32 = 2;
 
 const GENERATE_SRC: &str = r#"
 struct Params {
@@ -660,9 +592,6 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 static GENERATE: Mutex<Option<Entity>> = Mutex::new(None);
 
-/// Fill `dst` with per-particle pseudo-random values from `hash(id, seed)`:
-/// `mode` selects uniform / signed / gaussian, then `value * scale + offset`.
-/// Deterministic in `seed`. Writes `components` independent values per particle.
 pub fn generate(
     dst: Entity,
     components: u32,

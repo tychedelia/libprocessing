@@ -1,18 +1,3 @@
-//! Spike for the attribute-algebra `dst == src` question (task #4).
-//!
-//! The new verbs (map/combine/mix) take an explicit `dst` that may alias an
-//! input. This probes what the wgpu/Metal backend actually does when the *same*
-//! buffer is bound to both a `read` binding and a `read_write` binding in one
-//! dispatch — vs. the single `read_write` binding used for genuine in-place.
-//!
-//! Run: `cargo run --example alias_spike`. Interpret the printed results:
-//!   - distinct buffers: sanity baseline, must be [2,4,6,8].
-//!   - aliased read+read_write: if this comes back [2,4,6,8] with no validation
-//!     error, dual-binding aliasing is allowed and one kernel covers both cases.
-//!     If it errors / returns unchanged, aliasing is rejected → in-place must be
-//!     a single read_write binding.
-//!   - single read_write in-place: the fallback path; must be [2,4,6,8].
-
 use processing::prelude::*;
 
 const TWO_BINDING_SRC: &str = r#"
@@ -53,7 +38,6 @@ fn run() -> error::Result<()> {
 
     let base = [1.0f32, 2.0, 3.0, 4.0];
 
-    // Case A: distinct buffers (baseline).
     let two = compute_create(shader_create(TWO_BINDING_SRC)?)?;
     let a_src = buffer_create_with_data(to_bytes(&base))?;
     let a_dst = buffer_create_with_data(to_bytes(&[0.0; 4]))?;
@@ -62,16 +46,12 @@ fn run() -> error::Result<()> {
     compute_dispatch(two, 1, 1, 1)?;
     println!("A distinct read+read_write  -> {:?}", f32s(&buffer_read(a_dst)?));
 
-    // Case C: single read_write binding, genuine in-place. (Run before the
-    // fatal aliasing case so its result is observable.)
     let one = compute_create(shader_create(ONE_BINDING_SRC)?)?;
     let c = buffer_create_with_data(to_bytes(&base))?;
     compute_set(one, "data", shader_value::ShaderValue::Buffer(c))?;
     compute_dispatch(one, 1, 1, 1)?;
     println!("C single read_write in-place-> {:?} (want [2,4,6,8])", f32s(&buffer_read(c)?));
 
-    // Case B: SAME buffer bound to both the read and the read_write binding.
-    // Expect a *fatal* wgpu validation error — this is the whole finding.
     let b = buffer_create_with_data(to_bytes(&base))?;
     compute_set(two, "src", shader_value::ShaderValue::Buffer(b))?;
     compute_set(two, "dst", shader_value::ShaderValue::Buffer(b))?;

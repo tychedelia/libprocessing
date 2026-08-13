@@ -1,15 +1,3 @@
-// Grid-accelerated boids steering. This is the *force* half of a two-pass
-// flock: it reads the spatial hash (see `particles/grid.rs`) to gather each
-// particle's neighbours in O(1) expected time, accumulates separation /
-// alignment / cohesion steering, and updates `velocity` in place. It does NOT
-// move `position` — pair it with the `integrate` kernel so flocking composes
-// with the other sim kernels instead of hiding integration inside itself.
-//
-// Correctness invariant: the grid `cell_size` must be >= `neighbor_distance`,
-// so the 3x3x3 block of cells around a particle contains every neighbour within
-// `neighbor_distance`. `Particles.flock()` enforces this by clamping the
-// `neighbor_distance` param to the grid's `cell_size`.
-
 import processing::particles::{cell_coords, cell_index};
 
 struct FlockParams {
@@ -71,7 +59,6 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let sep_d2 = fp.sep_distance * fp.sep_distance;
     let neighbor_d2 = fp.neighbor_distance * fp.neighbor_distance;
 
-    // Query cell (clamped to the domain, matching grid_count/grid_scatter).
     let dims = vec3<u32>(gp.dims_x, gp.dims_y, gp.dims_z);
     let base = cell_coords(pos, gp.grid_min, gp.cell_size, dims);
     let bx = base.x;

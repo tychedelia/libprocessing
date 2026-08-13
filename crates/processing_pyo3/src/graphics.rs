@@ -2178,9 +2178,6 @@ impl Graphics {
         geometry: Option<&Geometry>,
         topology: Option<&str>,
     ) -> PyResult<()> {
-        // Direct-raster primitive (ignored when instancing `geometry`). The
-        // particle vertices draw in order with this primitive — points, or
-        // consecutive particles as lines/triangles — no connectivity needed.
         let topology = match topology {
             Some(s) => geometry::Topology::parse(s).ok_or_else(|| {
                 PyValueError::new_err(format!("particles(): unknown topology {s:?}"))

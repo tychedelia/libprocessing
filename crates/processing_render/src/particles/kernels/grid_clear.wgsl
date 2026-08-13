@@ -1,6 +1,3 @@
-// Zeroes the grid offset/count buffer before the counting pass. Part of the
-// bounded uniform spatial hash (see `particles/grid.rs`).
-
 @group(0) @binding(0) var<storage, read_write> counts: array<u32>;
 
 @compute @workgroup_size(256)

@@ -1,7 +1,3 @@
-// Adds each block's already-scanned exclusive offset (`block_sums[workgroup]`)
-// to every element of that block. Second half of the multi-level scan
-// primitive (see `particles/scan.rs`); run once per level, top-down.
-
 @group(0) @binding(0) var<storage, read_write> data: array<u32>;
 @group(0) @binding(1) var<storage, read> block_sums: array<u32>;
 

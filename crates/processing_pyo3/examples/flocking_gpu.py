@@ -90,8 +90,6 @@ def setup():
     boid = boid_geometry(0.4, 1.3, 0.15)
     mat = create_material(albedo=color_buf)
 
-    # Spatial hash for O(N) neighbour queries. Cells must be at least the
-    # neighbour distance so the 3x3x3 block around a boid covers all neighbours.
     cells = int((2.0 * BOUND) / NEIGHBOR_DIST) + 1
     grid = p.create_grid(
         min=[-BOUND, -BOUND, -BOUND],
@@ -119,8 +117,6 @@ def draw():
     material(mat)
     particles(p, boid)
 
-    # Grid-accelerated steering (velocity), then integrate, wrap, and orient.
-    # max_force is a per-frame velocity delta, so it scales with DT.
     p.flock(
         grid,
         sep_distance=SEPARATION_DIST,
@@ -133,7 +129,7 @@ def draw():
         min_speed=MAX_SPEED * 0.25,
     )
     p.apply(INTEGRATE, dt=DT)
-    p.apply(BOUNDS_BOX, aabb_min=[-BOUND] * 3, aabb_max=[BOUND] * 3, mode=2)  # wrap
+    p.apply(BOUNDS_BOX, aabb_min=[-BOUND] * 3, aabb_max=[BOUND] * 3, mode=2)
     p.apply(ORIENT, forward=[0.0, 0.0, 1.0], up=[0.0, 1.0, 0.0])
 
 

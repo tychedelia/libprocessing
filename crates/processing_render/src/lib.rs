@@ -1771,9 +1771,6 @@ pub fn shader_create(source: &str) -> error::Result<Entity> {
     })
 }
 
-/// Create a shader, enabling/disabling WESL `@if(name)` feature flags so one
-/// source can specialize into multiple pipelines (e.g. in-place vs out-of-place
-/// binding layouts for the attribute-algebra verbs).
 pub fn shader_create_with_features(
     source: &str,
     features: &[(&str, bool)],

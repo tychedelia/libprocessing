@@ -937,9 +937,6 @@ pub fn flush_draw_commands(
                         continue;
                     };
 
-                    // Direct-rasterization path: draw the particle buffers
-                    // directly, no instanced geometry. Resolve the position
-                    // attribute's backing GPU buffer handle.
                     let position_attr = builtin_attributes.position;
                     let Some(&buffer_entity) = particles_data.buffers.get(&position_attr) else {
                         warn!("particles(p) with no geometry needs a materialized `position` buffer");
@@ -952,10 +949,6 @@ pub fn flush_draw_commands(
                     let position = buffer.handle.clone();
                     let count = particles_data.capacity;
 
-                    // Default: draw the particle vertices directly in order, with
-                    // the requested primitive (`topology`) — points/lines/tris,
-                    // no index buffer. Only when custom connectivity is attached
-                    // (a source mesh's indices, etc.) do we draw indexed.
                     let (index, indirect) = match particles_data.connectivity {
                         Some(connectivity) => {
                             let (Ok(index_buf), Ok(indirect_buf)) = (
@@ -973,8 +966,6 @@ pub fn flush_draw_commands(
                         None => (None, None),
                     };
 
-                    // Per-vertex color / normal, pulled by the shader when the
-                    // attribute has been materialized on this system.
                     let color = particles_data
                         .buffers
                         .get(&builtin_attributes.color)
@@ -1009,10 +1000,6 @@ pub fn flush_draw_commands(
                                     raster_draw,
                                     Visibility::default(),
                                     Transform::default(),
-                                    // Particles can be anywhere (advected far from
-                                    // origin, unbounded); a fixed AABB would cull
-                                    // the whole draw wrongly. Culling is per-entity,
-                                    // not per-point, so just never cull it.
                                     NoFrustumCulling,
                                     render_layers,
                                 ))

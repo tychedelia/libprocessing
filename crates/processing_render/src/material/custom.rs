@@ -143,10 +143,6 @@ pub(crate) fn compile_shader(source: &str) -> Result<(String, naga::Module)> {
     compile_shader_with_features(source, &[])
 }
 
-/// Like [`compile_shader`], but enables/disables WESL conditional-translation
-/// feature flags (`@if(name)`). Lets one shader source specialize into several
-/// pipelines (e.g. an in-place vs out-of-place binding layout) — the reflected
-/// module is the post-condcomp output, so bind-group layouts match the variant.
 pub(crate) fn compile_shader_with_features(
     source: &str,
     features: &[(&str, bool)],

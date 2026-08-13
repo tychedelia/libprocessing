@@ -1,23 +1,14 @@
-# Direct rasterization, connected lines: the particle `position` buffer is drawn
-# straight as a LINE_STRIP — consecutive particles i, i+1, i+2, ... form one
-# continuous polyline, no index buffer, no connectivity, just `draw(0..count)`
-# with the line-strip primitive. `topology` only picks the primitive; the vertex
-# order IS the connectivity.
-#
-# The particles trace a (3,2) torus knot whose phase drifts over time; drawn as
-# a strip they read as a smooth glowing curve.
 from mewnala import *
 from math import cos, sin, tau
 
 N = 3000
-P, Q = 3, 2  # torus knot winding
+P, Q = 3, 2
 SCALE = 8.0
 
 p = None
 
 
 def knot(t, phase):
-    # (P,Q) torus knot, radius modulated so it reads as a 3D curve.
     r = cos(Q * t) + 2.0
     x = r * cos(P * t + phase)
     y = r * sin(P * t + phase)
@@ -50,7 +41,7 @@ def draw():
     camera_position(cos(t) * r, SCALE * 1.5, sin(t) * r)
     camera_look_at(0.0, 0.0, 0.0)
 
-    particles(p, topology="line_strip")  # consecutive particles -> one polyline
+    particles(p, topology="line_strip")
 
 
 run()

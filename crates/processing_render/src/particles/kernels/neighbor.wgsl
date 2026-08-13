@@ -1,13 +1,3 @@
-// Grid-accelerated neighbour gather / attribute transfer. For each particle it
-// walks the 3x3x3 block of grid cells (see `particles/grid.rs`) and accumulates
-// a falloff-weighted gather of a `source` attribute over neighbours within
-// `radius`, writing `out`. This is the general SPH/PBD/transfer primitive —
-// density, smoothing/blur, and weighted accumulation are all `op` modes.
-//
-// Correctness invariant (same as flock): grid `cell_size` >= `radius`, so the
-// 3x3x3 block contains every neighbour within `radius`. Self is included (a
-// particle is its own neighbour at distance 0), which is what smoothing wants.
-
 import processing::particles::{cell_coords, cell_index, falloff};
 
 struct GridParams {
@@ -21,9 +11,9 @@ struct GridParams {
 
 struct Params {
     radius: f32,
-    op: u32,            // 0 sum · 1 mean · 2 count(density)
-    falloff_mode: u32,  // FALLOFF_* (const/linear/smoothstep/quadratic/cubic/inverse)
-    components: u32,    // source/out components for sum/mean (1..4); ignored by count
+    op: u32,
+    falloff_mode: u32,
+    components: u32,
 }
 
 const OP_SUM: u32 = 0u;
@@ -96,7 +86,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         for (var c = 0u; c < comps; c++) {
             out[i * comps + c] = value[c] * inv;
         }
-    } else { // OP_SUM
+    } else {
         for (var c = 0u; c < comps; c++) {
             out[i * comps + c] = value[c];
         }

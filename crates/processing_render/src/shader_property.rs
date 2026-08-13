@@ -81,9 +81,6 @@ pub(crate) fn apply_shader_value(
                 .parameter(name)
                 .map(|p| p.category())
                 .ok_or_else(|| ProcessingError::UnknownShaderProperty(name.to_string()))?;
-            // A `Texture` value also binds a `sampler` param: the image-handle
-            // path resolves it to the image's own sampler. So the same image is
-            // set on both the texture and sampler bindings of a lookup/sample.
             if !matches!(
                 category,
                 ParameterCategory::Texture

@@ -73,10 +73,6 @@ pub fn create_buffer(
         .id()
 }
 
-/// Like [`create_buffer`] but ORs `extra_usage` into the GPU buffer's usage
-/// flags — e.g. `INDEX`/`INDIRECT` so a compute-written buffer can also be bound
-/// as a hardware index buffer or drive `draw_indexed_indirect` (the direct-
-/// rasterization connectivity path). Storage/copy usage is always included.
 pub fn create_buffer_with_usage(
     In((size, extra_usage)): In<(u64, BufferUsages)>,
     mut commands: Commands,

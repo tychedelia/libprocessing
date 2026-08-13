@@ -1,15 +1,3 @@
-// Vertex-pulling shader for the direct-rasterization path. Draws a particle
-// `position` storage buffer, one vertex per particle, pulled by
-// `@builtin(vertex_index)` — no mesh, no vertex buffer. The same shader serves
-// every topology: for indexed draws (lines/triangles) the index buffer simply
-// remaps `vertex_index`. See `particles/point_render.rs`.
-//
-// Per-vertex `color` and `normal` are pulled from the particle attribute buffers
-// when present (the pipeline defines HAS_COLORS / HAS_NORMALS), exactly like the
-// instanced ParticlesMaterial binds its `colors` buffer. For triangles the
-// pipeline also defines SHADED: lit by the vertex normal if present, else a flat
-// per-face normal from screen-space derivatives.
-
 #import bevy_render::view::View
 
 @group(0) @binding(0) var<uniform> view: View;
@@ -54,8 +42,6 @@ fn vertex(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
 fn fragment(frag: VertexOutput) -> @location(0) vec4<f32> {
     var rgb = frag.color.rgb;
 #ifdef SHADED
-    // Prefer a smooth per-vertex normal; fall back to a flat per-face normal
-    // from the world-position gradient. Two-sided so far facets aren't black.
     #ifdef HAS_NORMALS
     let normal = normalize(frag.normal);
     #else

@@ -1,11 +1,3 @@
-//! Validation harness for the GPU exclusive prefix-sum primitive
-//! (`prefix_sum_u32`). Boots an offscreen graphics context (to initialise the
-//! render device), scans several buffer sizes that exercise the single-block,
-//! block-boundary, and multi-level paths, and checks each against a CPU scan.
-//!
-//! Run: `cargo run --example scan_test`. Prints PASS/FAIL per case and exits
-//! non-zero if any case fails.
-
 use processing::prelude::*;
 
 fn u32s_to_bytes(v: &[u32]) -> Vec<u8> {
@@ -19,7 +11,6 @@ fn bytes_to_u32s(b: &[u8]) -> Vec<u32> {
 }
 
 fn run_case(n: usize) -> error::Result<bool> {
-    // Deterministic, non-trivial values (1..=7) so wrong strides/offsets show up.
     let input: Vec<u32> = (0..n).map(|i| (i % 7 + 1) as u32).collect();
 
     let buf = buffer_create_with_data(u32s_to_bytes(&input))?;
@@ -54,8 +45,6 @@ fn sketch() -> error::Result<bool> {
     let surface = surface_create_offscreen(1, 1, 1.0, TextureFormat::Rgba8Unorm)?;
     let _graphics = graphics_create(surface, 1, 1, TextureFormat::Rgba8Unorm)?;
 
-    // n values covering: empty, single, sub-block, exact block, block+1,
-    // multi-block single level, and two-level (> 256*256 = 65536).
     let cases = [1usize, 5, 255, 256, 257, 1000, 65_536, 70_000, 300_000];
     let mut all_ok = true;
     for &n in &cases {

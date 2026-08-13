@@ -1,9 +1,3 @@
-# Pure-GPU surface, now with GPU-generated COLOR and NORMALS. One compute pass
-# writes position + color + normal (particle attributes, auto-bound by p.apply)
-# and the triangle index buffer; the raster path pulls the per-vertex color and
-# normal for smooth lit shading (HAS_COLORS / HAS_NORMALS, mirroring how the
-# instanced material binds its color buffer). Nothing touches the CPU but a few
-# uniforms.
 from mewnala import *
 from math import cos, sin
 
@@ -37,11 +31,10 @@ def draw():
     camera_position(cos(t * 0.08) * d, EXTENT * 0.6, sin(t * 0.08) * d)
     camera_look_at(0.0, 0.0, 0.0)
 
-    # One pass writes position, color, normal, and the triangle indices.
     gen.set(nx=NX, ny=NY, time=t, extent=EXTENT)
     p.apply(gen)
 
-    particles(p, topology=TRIANGLES)  # pulls color + normal per vertex
+    particles(p, topology=TRIANGLES)
 
 
 run()
