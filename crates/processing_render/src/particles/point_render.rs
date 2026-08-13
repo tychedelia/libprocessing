@@ -24,7 +24,6 @@ use bevy::ecs::system::SystemParamItem;
 use bevy::ecs::system::lifetimeless::{Read, SRes};
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
-use bevy::render::camera::{DirtySpecializations, PendingQueues};
 use bevy::render::extract_component::{ExtractComponent, ExtractComponentPlugin};
 use bevy::render::mesh::allocator::MeshSlabs;
 use bevy::render::render_asset::RenderAssets;
@@ -68,7 +67,6 @@ impl Plugin for ParticlesPointRenderPlugin {
             return;
         };
         render_app
-            .init_resource::<PendingPointQueues>()
             .init_resource::<RasterBindGroups>()
             .add_render_command::<Opaque3d, DrawParticleRasterCommands>()
             .add_systems(
@@ -336,9 +334,6 @@ fn prepare_raster_bind_groups(
 
 // --- queue ------------------------------------------------------------------
 
-#[derive(Default, Deref, DerefMut, Resource)]
-struct PendingPointQueues(PendingQueues);
-
 fn queue_particle_raster(
     pipeline_cache: Res<PipelineCache>,
     mut pipeline: ResMut<ParticleRasterPipeline>,
@@ -346,8 +341,6 @@ fn queue_particle_raster(
     draw_functions: Res<DrawFunctions<Opaque3d>>,
     views: Query<(&ExtractedView, &RenderVisibleEntities, &Msaa)>,
     raster_draws: Query<&ParticleRasterDraw>,
-    mut dirty: ResMut<DirtySpecializations>,
-    mut pending: ResMut<PendingPointQueues>,
 ) {
     let draw_function = draw_functions.read().id::<DrawParticleRasterCommands>();
 
@@ -359,28 +352,22 @@ fn queue_particle_raster(
             continue;
         };
 
-        // A raster entity's key (topology / has_color / has_normal / MSAA) can
-        // change across frames, but the binned phase retains whatever pipeline
-        // was chosen when it first became visible. Mark our entities dirty every
-        // frame so `iter_to_dequeue` drops the stale bin and `iter_to_queue`
-        // re-adds with the current key. These aren't meshes, so it's a no-op for
-        // the mesh specialization systems that share this set, and the entity
-        // count is tiny (one per particle draw), so re-specializing (a pipeline-
-        // cache hit) every frame is free.
-        for (_, main_entity) in visible_raster.iter_visible() {
-            dirty.changed_renderables.insert(*main_entity);
+        // Our specialization key is DYNAMIC (topology / color / normal / MSAA can
+        // change frame-to-frame on a persistent entity), and the `Opaque3d` bin
+        // is RETAINED across frames. So we manage our own items: remove last
+        // frame's bin entry, re-specialize with the current key, re-add. This
+        // uses ONLY the phase — it must NOT touch the shared `DirtySpecializations`,
+        // whose class-agnostic dequeue path would let the mesh queue evict our
+        // items (that mistake blacked out all rendering; see the memory).
+        //
+        // `remove` is a no-op on a cache miss and cleanly swaps the bin when the
+        // key changed; entities that go invisible get their stale entry dropped.
+        for (_, main_entity) in &visible_raster.removed_entities {
+            phase.remove(*main_entity);
         }
+        for (render_entity, main_entity) in visible_raster.iter_visible() {
+            phase.remove(*main_entity);
 
-        let view_pending = pending.prepare_for_new_frame(view.retained_view_entity);
-        for &main_entity in dirty.iter_to_dequeue(view.retained_view_entity, visible_raster) {
-            phase.remove(main_entity);
-        }
-
-        for (render_entity, main_entity) in
-            dirty.iter_to_queue(view.retained_view_entity, visible_raster, &view_pending.prev_frame)
-        {
-            // Each draw picks its own primitive + attribute set; specialize per
-            // entity. Must match what `prepare` binds (color/normal present).
             let draw = raster_draws.get(*render_entity).ok();
             let topology = draw.map(|d| d.topology).unwrap_or(Topology::PointList);
 

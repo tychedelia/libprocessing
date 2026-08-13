@@ -7,7 +7,8 @@
 //
 // Correctness invariant: the grid `cell_size` must be >= `neighbor_distance`,
 // so the 3x3x3 block of cells around a particle contains every neighbour within
-// `neighbor_distance`. The orchestration sets `cell_size = neighbor_distance`.
+// `neighbor_distance`. `Particles.flock()` enforces this by clamping the
+// `neighbor_distance` param to the grid's `cell_size`.
 
 import processing::particles::{cell_coords, cell_index};
 

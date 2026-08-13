@@ -7,7 +7,10 @@ pub mod style;
 pub mod transform;
 
 use bevy::{
-    camera::{primitives::Aabb, visibility::RenderLayers},
+    camera::{
+        primitives::Aabb,
+        visibility::{NoFrustumCulling, RenderLayers},
+    },
     ecs::system::SystemParam,
     math::{Affine2, Affine3A, Mat4, Vec3A, Vec4},
     pbr::gpu_instance_batch::GpuBatchedMesh3d,
@@ -1006,10 +1009,11 @@ pub fn flush_draw_commands(
                                     raster_draw,
                                     Visibility::default(),
                                     Transform::default(),
-                                    Aabb {
-                                        center: Vec3A::ZERO,
-                                        half_extents: Vec3A::splat(1000.0),
-                                    },
+                                    // Particles can be anywhere (advected far from
+                                    // origin, unbounded); a fixed AABB would cull
+                                    // the whole draw wrongly. Culling is per-entity,
+                                    // not per-point, so just never cull it.
+                                    NoFrustumCulling,
                                     render_layers,
                                 ))
                                 .id();

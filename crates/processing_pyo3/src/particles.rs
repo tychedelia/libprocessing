@@ -565,7 +565,15 @@ impl Particles {
         } else if name.eq_ignore_ascii_case(c::COMBINE) {
             reject_unknown_kwargs(kwargs, &["a", "b", "out", "op", "b_scale", "b_offset"])?;
             let (a, comp) = self.operand(kwargs, "a")?;
-            let (b, _) = self.operand(kwargs, "b")?;
+            let (b, b_comp) = self.operand(kwargs, "b")?;
+            // The kernel strides `b` by `a`'s component count, so they must match
+            // (otherwise `b` is read across other particles' data — silent
+            // corruption). No broadcast — pack a scalar to the width first.
+            if b_comp != comp {
+                return Err(PyValueError::new_err(format!(
+                    "apply(combine): `a` has {comp} components but `b` has {b_comp} (must match)"
+                )));
+            }
             let out = self.dest(kwargs, a)?;
             let op = kw_op(kwargs, COMBINE_ADD, parse_combine_op)?;
             let b_scale = kw_f32(kwargs, "b_scale", 1.0)?;
@@ -577,8 +585,21 @@ impl Particles {
                 &["a", "b", "t", "out", "t_scale", "t_offset", "t_clamp"],
             )?;
             let (a, comp) = self.operand(kwargs, "a")?;
-            let (b, _) = self.operand(kwargs, "b")?;
-            let (t, _) = self.operand(kwargs, "t")?;
+            let (b, b_comp) = self.operand(kwargs, "b")?;
+            let (t, t_comp) = self.operand(kwargs, "t")?;
+            // `b` must match `a`'s width (strided by `comp`); `t` is one scalar
+            // per particle, broadcast across components — both are read wrong
+            // otherwise (silent corruption).
+            if b_comp != comp {
+                return Err(PyValueError::new_err(format!(
+                    "apply(mix): `a` has {comp} components but `b` has {b_comp} (must match)"
+                )));
+            }
+            if t_comp != 1 {
+                return Err(PyValueError::new_err(format!(
+                    "apply(mix): `t` must be a per-particle scalar (1 component), got {t_comp}"
+                )));
+            }
             let out = self.dest(kwargs, a)?;
             let t_scale = kw_f32(kwargs, "t_scale", 1.0)?;
             let t_offset = kw_f32(kwargs, "t_offset", 0.0)?;
@@ -819,7 +840,7 @@ impl Particles {
     /// Stream-compact by keep-flags: `flags` (an f32 attribute or buffer,
     /// non-zero = keep) is scanned and the dense list of kept particle indices
     /// is written into `out` (a u32 buffer); returns the kept count. Pair with
-    /// `p.apply(MAP, a=..., op=GREATER, p0=..., out="flag")` to build the flags.
+    /// `p.apply(MAP, a=..., op=GREATER, threshold=..., out="flag")` to build the flags.
     pub fn compact(&self, flags: &Bound<'_, PyAny>, out: &Buffer) -> PyResult<u32> {
         let (flag_buf, _) = self.resolve_operand(flags)?;
         compact_indices(flag_buf, out.entity)
@@ -942,6 +963,18 @@ impl Particles {
             // in a temporary `Compute` that would destroy it on drop.
             crate::compute::set_compute_kwargs(flock, kwargs)?;
         }
+        // Enforce the correctness invariant: the 3x3x3 cell scan only reaches
+        // `cell_size`, so a `neighbor_distance` beyond it would silently miss
+        // neighbours. Clamp it (mirrors the neighbor-gather path), overriding
+        // whatever `set_compute_kwargs` set.
+        let cell = grid.inner.params.cell_size;
+        let neighbor_distance = kw_f32(kwargs, "neighbor_distance", cell)?.min(cell);
+        compute_set(
+            flock,
+            "neighbor_distance",
+            shader_value::ShaderValue::Float(neighbor_distance),
+        )
+        .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
         particles_flock(self.entity, flock, &grid.inner)
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
