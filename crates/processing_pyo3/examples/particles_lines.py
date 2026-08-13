@@ -1,14 +1,13 @@
-# Direct-rasterization rung 2: draw a particle `position` buffer as connected
-# LINES. A compute kernel generates the hardware index buffer AND the indirect
-# draw args on the GPU (see connectivity.wgsl / point_render.rs), so the whole
-# polyline is issued as a single `draw_indexed_indirect` — no CPU index list,
-# no per-segment instancing. `particles(p, topology="lines")` chains consecutive
-# particles i -> i+1.
+# Direct rasterization, connected lines: the particle `position` buffer is drawn
+# straight as a LINE_STRIP — consecutive particles i, i+1, i+2, ... form one
+# continuous polyline, no index buffer, no connectivity, just `draw(0..count)`
+# with the line-strip primitive. `topology` only picks the primitive; the vertex
+# order IS the connectivity.
 #
-# The particles trace a (3,2) torus knot whose phase drifts over time; the chain
-# through them becomes a smooth glowing curve.
+# The particles trace a (3,2) torus knot whose phase drifts over time; drawn as
+# a strip they read as a smooth glowing curve.
 from mewnala import *
-from math import cos, sin, pi, tau
+from math import cos, sin, tau
 
 N = 3000
 P, Q = 3, 2  # torus knot winding
@@ -36,7 +35,6 @@ def setup():
         capacity=N,
         attributes=[Attribute.position()],
     )
-    # Seed something so the buffer exists; draw() rewrites it each frame.
     p.buffer("position").write([list(knot(i / N * tau, 0.0)) for i in range(N)])
 
 
@@ -52,7 +50,7 @@ def draw():
     camera_position(cos(t) * r, SCALE * 1.5, sin(t) * r)
     camera_look_at(0.0, 0.0, 0.0)
 
-    particles(p, topology="lines")  # GPU-generated index buffer + indirect draw
+    particles(p, topology="line_strip")  # consecutive particles -> one polyline
 
 
 run()

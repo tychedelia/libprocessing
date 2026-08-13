@@ -949,25 +949,39 @@ pub fn flush_draw_commands(
                     let position = buffer.handle.clone();
                     let count = particles_data.capacity;
 
-                    // Connected topologies need GPU-generated index + indirect
-                    // buffers (built by the pyo3 layer before recording). Points
-                    // draw straight from the vertex count.
-                    let (index, indirect) = if topology == crate::geometry::Topology::PointList {
-                        (None, None)
-                    } else {
-                        let Some(connectivity) = particles_data.connectivity else {
-                            warn!("particles(p, {topology:?}) has no connectivity built");
-                            continue;
-                        };
-                        let (Ok(index_buf), Ok(indirect_buf)) = (
-                            p_particle_buffers.get(connectivity.index_buffer),
-                            p_particle_buffers.get(connectivity.indirect_buffer),
-                        ) else {
-                            warn!("connectivity buffers for {:?} not found", particles);
-                            continue;
-                        };
-                        (Some(index_buf.handle.clone()), Some(indirect_buf.handle.clone()))
+                    // Default: draw the particle vertices directly in order, with
+                    // the requested primitive (`topology`) — points/lines/tris,
+                    // no index buffer. Only when custom connectivity is attached
+                    // (a source mesh's indices, etc.) do we draw indexed.
+                    let (index, indirect) = match particles_data.connectivity {
+                        Some(connectivity) => {
+                            let (Ok(index_buf), Ok(indirect_buf)) = (
+                                p_particle_buffers.get(connectivity.index_buffer),
+                                p_particle_buffers.get(connectivity.indirect_buffer),
+                            ) else {
+                                warn!("connectivity buffers for {:?} not found", particles);
+                                continue;
+                            };
+                            (
+                                Some(index_buf.handle.clone()),
+                                Some(indirect_buf.handle.clone()),
+                            )
+                        }
+                        None => (None, None),
                     };
+
+                    // Per-vertex color / normal, pulled by the shader when the
+                    // attribute has been materialized on this system.
+                    let color = particles_data
+                        .buffers
+                        .get(&builtin_attributes.color)
+                        .and_then(|&e| p_particle_buffers.get(e).ok())
+                        .map(|b| b.handle.clone());
+                    let normal = particles_data
+                        .buffers
+                        .get(&builtin_attributes.normal)
+                        .and_then(|&e| p_particle_buffers.get(e).ok())
+                        .map(|b| b.handle.clone());
                     let render_layers = batch.render_layers.clone();
 
                     flush_batch(&mut res, &mut batch, &p_material_handles);
@@ -978,6 +992,8 @@ pub fn flush_draw_commands(
                         topology,
                         index,
                         indirect,
+                        color,
+                        normal,
                     };
                     match particles_data.raster_draw_entity {
                         Some(e) => {

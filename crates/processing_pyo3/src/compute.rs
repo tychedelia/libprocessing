@@ -312,20 +312,31 @@ impl Compute {
     }
 }
 
+/// Set each `name=value` kwarg as a uniform/binding on a compute `entity`.
+///
+/// Free function (not a `Compute` method) so callers holding a *cached* compute
+/// entity — physics kernels, flock — can set params WITHOUT wrapping it in a
+/// temporary `Compute`, whose `Drop` would `compute_destroy` the shared entity.
+pub(crate) fn set_compute_kwargs(
+    entity: Entity,
+    kwargs: &Bound<'_, pyo3::types::PyDict>,
+) -> PyResult<()> {
+    for (key, value) in kwargs.iter() {
+        let name: String = key.extract()?;
+        let value = py_to_shader_value(&value)?;
+        compute_set(entity, &name, value).map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+    }
+    Ok(())
+}
+
 #[pymethods]
 impl Compute {
     #[pyo3(signature = (**kwargs))]
     pub fn set(&self, kwargs: Option<&Bound<'_, pyo3::types::PyDict>>) -> PyResult<()> {
-        let Some(kwargs) = kwargs else {
-            return Ok(());
-        };
-        for (key, value) in kwargs.iter() {
-            let name: String = key.extract()?;
-            let value = py_to_shader_value(&value)?;
-            compute_set(self.entity, &name, value)
-                .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        match kwargs {
+            Some(kwargs) => set_compute_kwargs(self.entity, kwargs),
+            None => Ok(()),
         }
-        Ok(())
     }
 
     pub fn dispatch(&self, x: u32, y: u32, z: u32) -> PyResult<()> {

@@ -66,6 +66,20 @@ pub const REDUCE: &str = "reduce";
 pub const EXTRACT: &str = "extract";
 pub const PACK: &str = "pack";
 pub const GENERATE: &str = "generate";
+// grid-accelerated neighbour gather/transfer verb (needs grid=)
+pub const NEIGHBOR: &str = "neighbor";
+
+// neighbor op= modes (gather a source attribute over neighbours): also SUM, MEAN
+// below. COUNT/DENSITY ignore the source and accumulate the falloff weight.
+pub const COUNT: &str = "count";
+pub const DENSITY: &str = "density";
+
+// falloff= weight profiles for the neighbour gather (also LINEAR above).
+pub const CONSTANT: &str = "constant";
+pub const SMOOTHSTEP: &str = "smoothstep";
+pub const QUADRATIC: &str = "quadratic";
+pub const CUBIC: &str = "cubic";
+pub const INVERSE: &str = "inverse";
 
 // map op= modes (also CLAMP, SQUARE above)
 pub const AFFINE: &str = "affine";

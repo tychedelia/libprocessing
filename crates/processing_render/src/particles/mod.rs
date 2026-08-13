@@ -2,7 +2,6 @@
 
 pub mod algebra;
 pub mod compact;
-pub mod connectivity;
 mod emit;
 pub mod grid;
 pub mod kernels;
@@ -14,8 +13,9 @@ pub mod reduce;
 pub mod scan;
 pub mod sort;
 
-pub use connectivity::particles_ensure_connectivity;
-pub use emit::{particles_apply, particles_emit, particles_emit_gpu, particles_flock};
+pub use emit::{
+    particles_apply, particles_emit, particles_emit_gpu, particles_flock, particles_gather,
+};
 pub use kernels::{
     BOUNDS_CLAMP, BOUNDS_REFLECT, BOUNDS_SOFT, BOUNDS_WRAP, COMBINE_ADD, COMBINE_DIV, COMBINE_MAX,
     COMBINE_MIN, COMBINE_MUL, COMBINE_POW, COMBINE_SUB, FALLOFF_CONST, FALLOFF_CUBIC,
@@ -43,7 +43,7 @@ pub use scatter::{
 };
 
 use bevy::asset::RenderAssetUsages;
-use bevy::mesh::VertexAttributeValues;
+use bevy::mesh::{Indices, VertexAttributeValues};
 use bevy::pbr::gpu_instance_batch::GpuInstanceBatchPlugin;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
@@ -94,18 +94,22 @@ pub struct Particles {
     /// Persistent entity for the direct-rasterization draw (`particles(p)` with
     /// no geometry — points, or connected lines/triangles). Reused across frames.
     pub raster_draw_entity: Option<Entity>,
-    /// GPU-generated index + indirect-args buffers for connected raster draws,
-    /// built once per topology by [`connectivity::particles_ensure_connectivity`].
+    /// Optional custom connectivity for the direct-raster path: an index buffer
+    /// that stitches the particle vertices into a surface with shared/reused
+    /// vertices (e.g. a source mesh's own indices, or a compute-generated mesh).
+    /// `None` (the default) draws directly in vertex order. Populated by opt-in
+    /// paths, never by the `topology` argument alone.
     pub connectivity: Option<Connectivity>,
     /// Ring-buffer write cursor; wraps at `capacity`.
     pub emit_head: u32,
 }
 
-/// GPU connectivity for the direct-rasterization path: a hardware index buffer
-/// and the indirect draw args, both compute-generated. See `connectivity.rs`.
+/// Custom connectivity for the direct-rasterization path: a hardware index
+/// buffer and the indirect draw args (a source mesh's indices, or compute-
+/// generated). When present, the particle vertices draw indexed via a single
+/// `draw_indexed_indirect` instead of straight in vertex order.
 #[derive(Clone, Copy)]
 pub struct Connectivity {
-    pub topology: crate::geometry::Topology,
     /// `compute::Buffer` entity, `STORAGE | INDEX` — the vertex index list.
     pub index_buffer: Entity,
     /// `compute::Buffer` entity, `STORAGE | INDIRECT` — `DrawIndexedIndirectArgs`.
@@ -193,17 +197,87 @@ pub fn create_from_geometry(
         buffers.insert(attr_entity, buffer_entity);
     }
 
+    // Particle `i` is mesh vertex `i`, so the mesh's own index buffer indexes the
+    // particles directly. Carry it as connectivity — the equivalent of a TD POP
+    // keeping its topology through a displacement — so the system can rasterize
+    // back as the mesh's surface (e.g. after a noise displacement). A non-indexed
+    // mesh needs none: its vertices are already in draw order.
+    let connectivity = mesh.indices().map(|indices| {
+        let index_data: Vec<u32> = match indices {
+            Indices::U16(v) => v.iter().map(|&i| i as u32).collect(),
+            Indices::U32(v) => v.clone(),
+        };
+        let index_buffer = make_buffer_with_usage(
+            &mut commands,
+            &mut shader_buffers,
+            &render_device,
+            &u32s_to_bytes(&index_data),
+            BufferUsages::INDEX,
+        );
+        // DrawIndexedIndirectArgs: index_count, instance_count, first_index,
+        // base_vertex, first_instance. The count is known here on the CPU.
+        let args = [index_data.len() as u32, 1, 0, 0, 0];
+        let indirect_buffer = make_buffer_with_usage(
+            &mut commands,
+            &mut shader_buffers,
+            &render_device,
+            &u32s_to_bytes(&args),
+            BufferUsages::INDIRECT,
+        );
+        Connectivity {
+            index_buffer,
+            indirect_buffer,
+        }
+    });
+
     let entity = commands
         .spawn(Particles {
             capacity,
             buffers,
             draw_entity: None,
             raster_draw_entity: None,
-            connectivity: None,
+            connectivity,
             emit_head: 0,
         })
         .id();
     Ok(entity)
+}
+
+/// Attach a GPU-fillable index buffer (`STORAGE | INDEX`) of `index_count` u32s
+/// as the particle system's connectivity, plus a matching indirect-args buffer,
+/// and return the index buffer entity for the caller to fill on the GPU (bind it
+/// into a compute and write connectivity there). This is the opt-in path for
+/// rasterizing particles as a surface whose topology is *generated* on the GPU —
+/// no source mesh, no CPU index list. The draw count is `index_count` (known
+/// here); only the index *contents* come from the GPU.
+pub fn particles_set_connectivity(
+    particles_entity: Entity,
+    index_count: u32,
+) -> error::Result<Entity> {
+    use bevy::render::render_resource::BufferUsages;
+
+    let index_buffer =
+        crate::buffer_create_with_usage(index_count as u64 * 4, BufferUsages::INDEX)?;
+    let indirect_buffer = crate::buffer_create_with_usage(20, BufferUsages::INDIRECT)?;
+    // DrawIndexedIndirectArgs: index_count, instance_count, first_index,
+    // base_vertex, first_instance.
+    crate::buffer_write(indirect_buffer, u32s_to_bytes(&[index_count, 1, 0, 0, 0]))?;
+
+    let previous = app_mut(|app| {
+        let mut field = app
+            .world_mut()
+            .get_mut::<Particles>(particles_entity)
+            .ok_or(error::ProcessingError::ParticlesNotFound)?;
+        Ok(field.connectivity.replace(Connectivity {
+            index_buffer,
+            indirect_buffer,
+        }))
+    })?;
+    if let Some(previous) = previous {
+        crate::buffer_destroy(previous.index_buffer)?;
+        crate::buffer_destroy(previous.indirect_buffer)?;
+    }
+    Ok(index_buffer)
 }
 
 fn make_buffer(
@@ -212,8 +286,29 @@ fn make_buffer(
     render_device: &RenderDevice,
     initial: &[u8],
 ) -> Entity {
+    make_buffer_with_usage(
+        commands,
+        shader_buffers,
+        render_device,
+        initial,
+        BufferUsages::empty(),
+    )
+}
+
+/// Like [`make_buffer`] but ORs `extra_usage` into the GPU buffer's usage — e.g.
+/// `INDEX`/`INDIRECT` so a particle-derived buffer can also drive an indexed
+/// indirect draw (the direct-raster connectivity path).
+fn make_buffer_with_usage(
+    commands: &mut Commands,
+    shader_buffers: &mut Assets<ShaderBuffer>,
+    render_device: &RenderDevice,
+    initial: &[u8],
+    extra_usage: BufferUsages,
+) -> Entity {
     let byte_size = initial.len() as u64;
-    let handle = shader_buffers.add(ShaderBuffer::new(initial, RenderAssetUsages::all()));
+    let mut shader_buffer = ShaderBuffer::new(initial, RenderAssetUsages::all());
+    shader_buffer.buffer_description.usage |= extra_usage;
+    let handle = shader_buffers.add(shader_buffer);
     let readback = render_device.create_buffer(&BufferDescriptor {
         label: Some("Particles Buffer Readback"),
         size: byte_size,
@@ -229,6 +324,15 @@ fn make_buffer(
             bound_rw: false,
         })
         .id()
+}
+
+/// Pack `u32`s little-endian for upload as an index / indirect-args buffer.
+fn u32s_to_bytes(values: &[u32]) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(values.len() * 4);
+    for &value in values {
+        bytes.extend_from_slice(&value.to_le_bytes());
+    }
+    bytes
 }
 
 fn attribute_values_to_bytes(

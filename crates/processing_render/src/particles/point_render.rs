@@ -99,6 +99,11 @@ pub struct ParticleRasterDraw {
     pub topology: Topology,
     pub index: Option<Handle<ShaderBuffer>>,
     pub indirect: Option<Handle<ShaderBuffer>>,
+    /// Per-vertex color (`vec4`, flat f32) and normal (`vec3`, flat f32) pulled
+    /// from the particle attribute buffers when present, mirroring how the
+    /// instanced `ParticlesMaterial` binds `colors`. `None` → white / flat.
+    pub color: Option<Handle<ShaderBuffer>>,
+    pub normal: Option<Handle<ShaderBuffer>>,
 }
 
 // --- pipeline ---------------------------------------------------------------
@@ -117,6 +122,9 @@ struct RasterKey {
     samples: u32,
     /// `Topology` repr — the primitive to rasterize with.
     topology: u8,
+    /// Whether the particle system has materialized `color` / `normal` buffers.
+    has_color: bool,
+    has_normal: bool,
 }
 
 impl Specializer<RenderPipeline> for RasterSpecializer {
@@ -127,8 +135,26 @@ impl Specializer<RenderPipeline> for RasterSpecializer {
         descriptor: &mut RenderPipelineDescriptor,
     ) -> Result<Canonical<Self::Key>, BevyError> {
         descriptor.multisample.count = key.samples;
-        if let Some(topology) = Topology::from_u8(key.topology) {
-            descriptor.primitive.topology = topology.to_primitive_topology();
+        let topology = Topology::from_u8(key.topology).unwrap_or(Topology::PointList);
+        descriptor.primitive.topology = topology.to_primitive_topology();
+
+        let mut defs: Vec<&str> = Vec::new();
+        if key.has_color {
+            defs.push("HAS_COLORS");
+        }
+        if key.has_normal {
+            defs.push("HAS_NORMALS");
+        }
+        // Triangle surfaces get lighting; points/lines stay flat, so `SHADED` is
+        // defined only for triangle topology.
+        if matches!(topology, Topology::TriangleList | Topology::TriangleStrip) {
+            defs.push("SHADED");
+        }
+        for def in defs {
+            descriptor.vertex.shader_defs.push(def.into());
+            if let Some(fragment) = descriptor.fragment.as_mut() {
+                fragment.shader_defs.push(def.into());
+            }
         }
         Ok(key)
     }
@@ -148,10 +174,17 @@ impl FromWorld for ParticleRasterPipeline {
         )
         .to_vec();
         let view_layout = render_device.create_bind_group_layout("point_view_layout", &view_entries);
-        // Group 1: the particle position storage buffer.
-        let storage_entries: Vec<_> = BindGroupLayoutEntries::single(
+        // Group 1: the particle position / color / normal storage buffers. This
+        // layout is a fixed superset — the shader references binding 1/2 only
+        // under HAS_COLORS / HAS_NORMALS; absent attributes bind `position` as an
+        // unread placeholder, so a single layout serves every variant.
+        let storage_entries: Vec<_> = BindGroupLayoutEntries::sequential(
             ShaderStages::VERTEX,
-            storage_buffer_read_only_sized(false, None),
+            (
+                storage_buffer_read_only_sized(false, None),
+                storage_buffer_read_only_sized(false, None),
+                storage_buffer_read_only_sized(false, None),
+            ),
         )
         .to_vec();
         let storage_layout =
@@ -262,10 +295,32 @@ fn prepare_raster_bind_groups(
             }
             _ => (None, None),
         };
+        // Bind color/normal when the attribute exists and is uploaded; otherwise
+        // bind `position` as an unread placeholder (the shader only touches these
+        // under HAS_COLORS / HAS_NORMALS, which the key gates in lockstep). A
+        // present-but-not-yet-ready buffer skips the draw for this frame.
+        let color_buffer = match &draw.color {
+            Some(handle) => match gpu_buffers.get(handle) {
+                Some(gpu) => &gpu.buffer,
+                None => continue,
+            },
+            None => &position.buffer,
+        };
+        let normal_buffer = match &draw.normal {
+            Some(handle) => match gpu_buffers.get(handle) {
+                Some(gpu) => &gpu.buffer,
+                None => continue,
+            },
+            None => &position.buffer,
+        };
         let storage_bg = render_device.create_bind_group(
             "point_storage_bind_group",
             &pipeline.storage_layout,
-            &BindGroupEntries::single(position.buffer.as_entire_binding()),
+            &BindGroupEntries::sequential((
+                position.buffer.as_entire_binding(),
+                color_buffer.as_entire_binding(),
+                normal_buffer.as_entire_binding(),
+            )),
         );
         bind_groups.entries.insert(
             *main_entity,
@@ -291,7 +346,7 @@ fn queue_particle_raster(
     draw_functions: Res<DrawFunctions<Opaque3d>>,
     views: Query<(&ExtractedView, &RenderVisibleEntities, &Msaa)>,
     raster_draws: Query<&ParticleRasterDraw>,
-    dirty: Res<DirtySpecializations>,
+    mut dirty: ResMut<DirtySpecializations>,
     mut pending: ResMut<PendingPointQueues>,
 ) {
     let draw_function = draw_functions.read().id::<DrawParticleRasterCommands>();
@@ -304,6 +359,18 @@ fn queue_particle_raster(
             continue;
         };
 
+        // A raster entity's key (topology / has_color / has_normal / MSAA) can
+        // change across frames, but the binned phase retains whatever pipeline
+        // was chosen when it first became visible. Mark our entities dirty every
+        // frame so `iter_to_dequeue` drops the stale bin and `iter_to_queue`
+        // re-adds with the current key. These aren't meshes, so it's a no-op for
+        // the mesh specialization systems that share this set, and the entity
+        // count is tiny (one per particle draw), so re-specializing (a pipeline-
+        // cache hit) every frame is free.
+        for (_, main_entity) in visible_raster.iter_visible() {
+            dirty.changed_renderables.insert(*main_entity);
+        }
+
         let view_pending = pending.prepare_for_new_frame(view.retained_view_entity);
         for &main_entity in dirty.iter_to_dequeue(view.retained_view_entity, visible_raster) {
             phase.remove(main_entity);
@@ -312,17 +379,18 @@ fn queue_particle_raster(
         for (render_entity, main_entity) in
             dirty.iter_to_queue(view.retained_view_entity, visible_raster, &view_pending.prev_frame)
         {
-            // Each draw picks its own primitive; specialize per entity topology.
-            let topology = raster_draws
-                .get(*render_entity)
-                .map(|d| d.topology)
-                .unwrap_or(Topology::PointList);
+            // Each draw picks its own primitive + attribute set; specialize per
+            // entity. Must match what `prepare` binds (color/normal present).
+            let draw = raster_draws.get(*render_entity).ok();
+            let topology = draw.map(|d| d.topology).unwrap_or(Topology::PointList);
 
             let Ok(pipeline_id) = pipeline.variants.specialize(
                 &pipeline_cache,
                 RasterKey {
                     samples: msaa.samples(),
                     topology: topology as u8,
+                    has_color: draw.is_some_and(|d| d.color.is_some()),
+                    has_normal: draw.is_some_and(|d| d.normal.is_some()),
                 },
             ) else {
                 continue;

@@ -57,6 +57,7 @@ impl Plugin for ParticlesKernelsPlugin {
         embedded_asset!(app, "compact_flag.wgsl");
         embedded_asset!(app, "compact_scatter.wgsl");
         embedded_asset!(app, "reduce.wgsl");
+        embedded_asset!(app, "neighbor.wgsl");
     }
 }
 

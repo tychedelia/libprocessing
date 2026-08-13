@@ -57,6 +57,9 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     add!(m, SUB, MUL, DIV, POW);
     add!(m, LENGTH, SUM, SUMSQ, MEAN, MIN, MAX); // reduce modes (+ combine MIN/MAX)
     add!(m, UNIFORM, SIGNED, GAUSSIAN); // generate modes
+    add!(m, NEIGHBOR); // grid-accelerated neighbour gather verb
+    add!(m, COUNT, DENSITY); // neighbor modes (+ SUM, MEAN)
+    add!(m, CONSTANT, SMOOTHSTEP, QUADRATIC, CUBIC, INVERSE); // falloff= profiles (+ LINEAR)
     add!(
         m, NOISE, TRANSFORM, ATTRACT, DRAG, VORTEX, FORCE, INTEGRATE, AGE, IMPULSE, ORIENT, FIELD,
         BOUNDS_SPHERE, BOUNDS_BOX

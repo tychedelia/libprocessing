@@ -85,6 +85,34 @@ fn parse_generate_mode(s: &str) -> PyResult<u32> {
     }
 }
 
+// neighbour-gather op codes, matching `neighbor.wgsl` (OP_SUM/MEAN/COUNT).
+const NEIGHBOR_SUM: u32 = 0;
+const NEIGHBOR_MEAN: u32 = 1;
+const NEIGHBOR_COUNT: u32 = 2;
+
+fn parse_neighbor_op(s: &str) -> PyResult<u32> {
+    match () {
+        _ if s.eq_ignore_ascii_case(c::SUM) => Ok(NEIGHBOR_SUM),
+        _ if s.eq_ignore_ascii_case(c::MEAN) => Ok(NEIGHBOR_MEAN),
+        _ if s.eq_ignore_ascii_case(c::COUNT) || s.eq_ignore_ascii_case(c::DENSITY) => {
+            Ok(NEIGHBOR_COUNT)
+        }
+        _ => Err(PyValueError::new_err(format!("neighbor: unknown op {s:?}"))),
+    }
+}
+
+fn parse_falloff(s: &str) -> PyResult<u32> {
+    match () {
+        _ if s.eq_ignore_ascii_case(c::CONSTANT) => Ok(FALLOFF_CONST),
+        _ if s.eq_ignore_ascii_case(c::LINEAR) => Ok(FALLOFF_LINEAR),
+        _ if s.eq_ignore_ascii_case(c::SMOOTHSTEP) => Ok(FALLOFF_SMOOTHSTEP),
+        _ if s.eq_ignore_ascii_case(c::QUADRATIC) => Ok(FALLOFF_QUADRATIC),
+        _ if s.eq_ignore_ascii_case(c::CUBIC) => Ok(FALLOFF_CUBIC),
+        _ if s.eq_ignore_ascii_case(c::INVERSE) => Ok(FALLOFF_INVERSE),
+        _ => Err(PyValueError::new_err(format!("neighbor: unknown falloff {s:?}"))),
+    }
+}
+
 /// A spatial hash grid for a particle system — the O(N) neighbourhood structure
 /// behind `p.flock(...)`. Create with `p.create_grid(...)`; rebuilt each frame
 /// inside `flock`.
@@ -202,6 +230,36 @@ fn map_params(kwargs: Option<&Bound<'_, PyDict>>, op: u32) -> PyResult<(f32, f32
         ),
         _ => (0.0, 0.0),
     })
+}
+
+/// The scalar-param kwarg names [`map_params`] reads for a given `map` op, so
+/// [`reject_unknown_kwargs`] can flag misspellings precisely per mode.
+fn map_param_keys(op: u32) -> &'static [&'static str] {
+    match op {
+        MAP_AFFINE => &["scale", "offset"],
+        MAP_CLAMP => &["lo", "hi"],
+        MAP_GREATER | MAP_LESS | MAP_GEQ | MAP_LEQ | MAP_EQ | MAP_NEQ => &["threshold", "epsilon"],
+        _ => &[],
+    }
+}
+
+/// Error if any provided kwarg isn't in `valid`. Algebra verbs read their params
+/// by name with defaults, so a misspelled param would otherwise be silently
+/// ignored (applying the default) and produce a wrong result with no error.
+fn reject_unknown_kwargs(kwargs: Option<&Bound<'_, PyDict>>, valid: &[&str]) -> PyResult<()> {
+    let Some(kwargs) = kwargs else {
+        return Ok(());
+    };
+    for key in kwargs.keys() {
+        let name: String = key.extract()?;
+        if !valid.iter().any(|v| *v == name) {
+            return Err(PyValueError::new_err(format!(
+                "apply(): unknown parameter {name:?} (valid: {})",
+                valid.join(", ")
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Parse the `op=` mode kwarg (a string) into an internal op code, or use the
@@ -487,7 +545,9 @@ impl Particles {
         // attribute buffers auto-bind by name.
         if let Some(entity) = physics_compute(name)? {
             if let Some(kwargs) = kwargs {
-                Compute::from_entity(entity).set(Some(kwargs))?;
+                // `entity` is cached (shared); set params directly so we never
+                // wrap it in a temporary `Compute` that would destroy it on drop.
+                crate::compute::set_compute_kwargs(entity, kwargs)?;
             }
             return particles_apply(self.entity, entity).map_err(rt);
         }
@@ -497,9 +557,13 @@ impl Particles {
             let (a, comp) = self.operand(kwargs, "a")?;
             let out = self.dest(kwargs, a)?;
             let op = kw_op(kwargs, MAP_AFFINE, parse_map_op)?;
+            let mut valid = vec!["a", "out", "op"];
+            valid.extend_from_slice(map_param_keys(op));
+            reject_unknown_kwargs(kwargs, &valid)?;
             let (p0, p1) = map_params(kwargs, op)?;
             algebra_map(out, a, comp, op, p0, p1).map_err(rt)
         } else if name.eq_ignore_ascii_case(c::COMBINE) {
+            reject_unknown_kwargs(kwargs, &["a", "b", "out", "op", "b_scale", "b_offset"])?;
             let (a, comp) = self.operand(kwargs, "a")?;
             let (b, _) = self.operand(kwargs, "b")?;
             let out = self.dest(kwargs, a)?;
@@ -508,6 +572,10 @@ impl Particles {
             let b_offset = kw_f32(kwargs, "b_offset", 0.0)?;
             algebra_combine(out, a, b, comp, op, b_scale, b_offset).map_err(rt)
         } else if name.eq_ignore_ascii_case(c::MIX) {
+            reject_unknown_kwargs(
+                kwargs,
+                &["a", "b", "t", "out", "t_scale", "t_offset", "t_clamp"],
+            )?;
             let (a, comp) = self.operand(kwargs, "a")?;
             let (b, _) = self.operand(kwargs, "b")?;
             let (t, _) = self.operand(kwargs, "t")?;
@@ -517,6 +585,12 @@ impl Particles {
             let t_clamp = kw_bool(kwargs, "t_clamp", true)?;
             algebra_mix(out, a, b, t, comp, t_scale, t_offset, t_clamp).map_err(rt)
         } else if name.eq_ignore_ascii_case(c::LOOKUP) {
+            reject_unknown_kwargs(
+                kwargs,
+                &[
+                    "a", "out", "tex", "u_scale", "u_offset", "v_scale", "v_offset", "color_scale",
+                ],
+            )?;
             let (a, in_comp) = self.operand(kwargs, "a")?;
             let out = self.operand(kwargs, "out")?.0;
             let tex = kw(kwargs, "tex")
@@ -534,16 +608,19 @@ impl Particles {
             )
             .map_err(rt)
         } else if name.eq_ignore_ascii_case(c::REDUCE) {
+            reject_unknown_kwargs(kwargs, &["a", "out", "op"])?;
             let (a, comp) = self.operand(kwargs, "a")?;
             let out = self.operand(kwargs, "out")?.0;
             let op = kw_op(kwargs, REDUCE_LENGTH, parse_reduce_op)?;
             algebra_reduce(out, a, comp, op).map_err(rt)
         } else if name.eq_ignore_ascii_case(c::EXTRACT) {
+            reject_unknown_kwargs(kwargs, &["a", "out", "index"])?;
             let (a, comp) = self.operand(kwargs, "a")?;
             let out = self.operand(kwargs, "out")?.0;
             let index = kw_u32(kwargs, "index", 0)?;
             algebra_extract(out, a, comp, index).map_err(rt)
         } else if name.eq_ignore_ascii_case(c::PACK) {
+            reject_unknown_kwargs(kwargs, &["out", "sources"])?;
             let out = self.operand(kwargs, "out")?.0;
             let sources = kw(kwargs, "sources")
                 .ok_or_else(|| PyRuntimeError::new_err("apply(pack): missing 'sources' list"))?;
@@ -554,6 +631,7 @@ impl Particles {
             }
             algebra_pack(out, &entities).map_err(rt)
         } else if name.eq_ignore_ascii_case(c::GENERATE) {
+            reject_unknown_kwargs(kwargs, &["out", "mode", "seed", "scale", "offset"])?;
             let (out, comp) = self.operand(kwargs, "out")?;
             let mode = match kw(kwargs, "mode") {
                 Some(v) => parse_generate_mode(&v.extract::<String>()?)?,
@@ -563,6 +641,54 @@ impl Particles {
             let scale = kw_f32(kwargs, "scale", 1.0)?;
             let offset = kw_f32(kwargs, "offset", 0.0)?;
             algebra_generate(out, comp, mode, seed, scale, offset).map_err(rt)
+        } else if name.eq_ignore_ascii_case(c::NEIGHBOR) {
+            reject_unknown_kwargs(kwargs, &["a", "out", "grid", "op", "radius", "falloff"])?;
+            let grid = kw(kwargs, "grid")
+                .ok_or_else(|| PyRuntimeError::new_err("apply(neighbor): missing 'grid'"))?
+                .extract::<PyRef<Grid>>()
+                .map_err(|_| PyRuntimeError::new_err("apply(neighbor): 'grid' must be a Grid"))?;
+            let op = kw_op(kwargs, NEIGHBOR_MEAN, parse_neighbor_op)?;
+            let falloff = match kw(kwargs, "falloff") {
+                Some(v) => parse_falloff(&v.extract::<String>()?)?,
+                None => FALLOFF_SMOOTHSTEP,
+            };
+            // The 3x3x3 cell block only covers `cell_size`; default the query
+            // radius to it (and never let it exceed it — neighbours past one cell
+            // would be silently missed).
+            let cell = grid.inner.params.cell_size;
+            let radius = kw_f32(kwargs, "radius", cell)?.min(cell);
+
+            let (out, out_comp) = self.operand(kwargs, "out")?;
+            // count/density ignore the source and write a scalar; sum/mean gather
+            // the source's components per particle (out must match).
+            let (a, components) = if op == NEIGHBOR_COUNT {
+                if out_comp != 1 {
+                    return Err(PyValueError::new_err(
+                        "apply(neighbor, op=count/density): `out` must be a scalar (1 component)",
+                    ));
+                }
+                // `a` is optional here; bind `position` as a harmless placeholder.
+                let a = match kw(kwargs, "a") {
+                    Some(_) => self.operand(kwargs, "a")?.0,
+                    None => {
+                        let pos = Self::builtin_attribute("position")
+                            .expect("position is a built-in")
+                            .entity;
+                        particles_ensure_attribute(self.entity, pos).map_err(rt)?
+                    }
+                };
+                (a, 1u32)
+            } else {
+                let (a, in_comp) = self.operand(kwargs, "a")?;
+                if in_comp != out_comp {
+                    return Err(PyValueError::new_err(format!(
+                        "apply(neighbor): source has {in_comp} components but out has {out_comp}"
+                    )));
+                }
+                (a, in_comp)
+            };
+            particles_gather(self.entity, &grid.inner, a, out, op, radius, falloff, components)
+                .map_err(rt)
         } else {
             Err(PyValueError::new_err(format!(
                 "apply(): unknown operation {name:?}"
@@ -613,6 +739,21 @@ impl Particles {
             AttributeFormat::Float4 => shader_value::ShaderValue::Float4([0.0; 4]),
         };
         Ok(Buffer::from_entity(buf, Some(element_type)))
+    }
+
+    /// Allocate a GPU index buffer of `index_count` u32s and attach it as this
+    /// system's connectivity, returning it for a compute shader to fill. Bind it
+    /// into a compute (`gen.set(indices=idx)`) and write the connectivity on the
+    /// GPU; then `particles(p, topology=TRIANGLES)` (or `LINES`) rasterizes the
+    /// particle positions through those generated indices via one indexed
+    /// indirect draw — no source mesh, no CPU index list.
+    pub fn index_buffer(&self, index_count: u32) -> PyResult<Buffer> {
+        let entity = particles_set_connectivity(self.entity, index_count)
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+        Ok(Buffer::from_entity(
+            entity,
+            Some(shader_value::ShaderValue::UInt(0)),
+        ))
     }
 
     /// Apply an operation to the particle system, mirroring `filter(...)`:
@@ -797,7 +938,9 @@ impl Particles {
     pub fn flock(&self, grid: &Grid, kwargs: Option<&Bound<'_, PyDict>>) -> PyResult<()> {
         let flock = flock_compute()?;
         if let Some(kwargs) = kwargs {
-            Compute::from_entity(flock).set(Some(kwargs))?;
+            // `flock` is cached (shared); set params directly so we never wrap it
+            // in a temporary `Compute` that would destroy it on drop.
+            crate::compute::set_compute_kwargs(flock, kwargs)?;
         }
         particles_flock(self.entity, flock, &grid.inner)
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
