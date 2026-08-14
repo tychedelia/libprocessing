@@ -447,6 +447,8 @@ mod mewnala {
     #[pymodule_export]
     use super::particles::Particles;
     #[pymodule_export]
+    use super::particles::Primitives;
+    #[pymodule_export]
     use super::surface::Surface;
 
     #[pymodule_init]
@@ -1168,7 +1170,7 @@ mod mewnala {
     #[pyo3(pass_module, signature = (particles, geometry = None, topology = None))]
     fn particles(
         module: &Bound<'_, PyModule>,
-        particles: &Bound<'_, super::particles::Particles>,
+        particles: &Bound<'_, PyAny>,
         geometry: Option<&Bound<'_, Geometry>>,
         topology: Option<&str>,
     ) -> PyResult<()> {
@@ -1176,11 +1178,7 @@ mod mewnala {
             Some(g) => Some(g.extract::<PyRef<Geometry>>()?),
             None => None,
         };
-        graphics!(module).particles(
-            &*particles.extract::<PyRef<super::particles::Particles>>()?,
-            geometry.as_deref(),
-            topology,
-        )
+        graphics!(module).particles(particles, geometry.as_deref(), topology)
     }
 
     #[pyfunction(name = "color")]
