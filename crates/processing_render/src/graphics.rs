@@ -585,6 +585,31 @@ pub fn present(app: &mut App, entity: Entity) -> Result<()> {
     Ok(())
 }
 
+/// Present the current frame for several graphics surfaces with a single app update, so
+/// hosts driving multiple surfaces (e.g. previews plus a main window) pay for one frame,
+/// not one per surface.
+pub fn present_all(app: &mut App, entities: &[Entity]) -> Result<()> {
+    for &entity in entities {
+        graphics_mut!(app, entity)
+            .get_mut::<Camera>()
+            .ok_or(ProcessingError::GraphicsNotFound)?
+            .output_mode = CameraOutputMode::Write {
+            blend_state: None,
+            clear_color: ClearColorConfig::None,
+        };
+        graphics_mut!(app, entity).insert(Flush);
+    }
+    app.update();
+    for &entity in entities {
+        graphics_mut!(app, entity).remove::<Flush>();
+        graphics_mut!(app, entity)
+            .get_mut::<Camera>()
+            .ok_or(ProcessingError::GraphicsNotFound)?
+            .output_mode = CameraOutputMode::Skip;
+    }
+    Ok(())
+}
+
 /// End the current draw
 pub fn end_draw(app: &mut App, entity: Entity) -> Result<()> {
     present(app, entity)

@@ -31,6 +31,7 @@ struct ManagedWindow {
     surface: Option<Entity>,
     last_applied: AppliedWindow,
     windowed_geometry: Option<(i32, i32, u32, u32)>,
+    cursor_shape: Option<glfw::StandardCursor>,
 }
 
 /// What we last pushed to the OS window, diffed against [`BevyWindow`] each tick so we
@@ -130,6 +131,7 @@ impl GlfwContext {
             surface: None,
             last_applied: AppliedWindow::default(),
             windowed_geometry: None,
+            cursor_shape: None,
         }
     }
 
@@ -295,6 +297,12 @@ impl GlfwContext {
     }
 
     pub fn poll_events(&mut self) -> bool {
+        self.poll_events_with(|_| {})
+    }
+
+    /// Like [`GlfwContext::poll_events`], additionally passing every main-window
+    /// event to `on_event` (e.g. so a host UI layer such as egui sees raw input).
+    pub fn poll_events_with(&mut self, mut on_event: impl FnMut(&WindowEvent)) -> bool {
         self.glfw.poll_events();
         self.sync_monitors();
 
@@ -304,7 +312,9 @@ impl GlfwContext {
         let mut main_open = true;
         let mut i = 0;
         while i < windows.len() {
-            if windows[i].poll(glfw) {
+            let observer: Option<&mut dyn FnMut(&WindowEvent)> =
+                if i == 0 { Some(&mut on_event) } else { None };
+            if windows[i].poll(glfw, observer) {
                 i += 1;
             } else if i == 0 {
                 main_open = false;
@@ -322,6 +332,24 @@ impl GlfwContext {
         main_open
     }
 
+    /// Inner size of the main window in screen coordinates.
+    pub fn window_size(&self) -> (u32, u32) {
+        self.windows
+            .first()
+            .map(|w| {
+                let (width, height) = w.window.get_size();
+                (width as u32, height as u32)
+            })
+            .unwrap_or((0, 0))
+    }
+
+    /// Read the system clipboard via the main window.
+    pub fn clipboard_text(&mut self) -> Option<String> {
+        self.windows
+            .first_mut()
+            .and_then(|w| w.window.get_clipboard_string())
+    }
+
     /// Content scale (DPI) of the main window.
     pub fn content_scale(&self) -> f32 {
         self.windows
@@ -329,16 +357,40 @@ impl GlfwContext {
             .map(|w| w.window.get_content_scale().0)
             .unwrap_or(1.0)
     }
+
+    /// Set the system clipboard from the main window.
+    pub fn set_clipboard_text(&mut self, text: &str) {
+        if let Some(w) = self.windows.first_mut() {
+            w.window.set_clipboard_string(text);
+        }
+    }
+
+    /// Set (or clear) the main window's standard cursor shape. Diffed against
+    /// the last applied shape so per-frame callers don't recreate OS cursors.
+    pub fn set_standard_cursor(&mut self, cursor: Option<glfw::StandardCursor>) {
+        let Some(w) = self.windows.first_mut() else {
+            return;
+        };
+        if w.cursor_shape == cursor {
+            return;
+        }
+        w.window.set_cursor(cursor.map(glfw::Cursor::standard));
+        w.cursor_shape = cursor;
+    }
 }
 
 impl ManagedWindow {
     /// Flush this window's events and sync its OS state; returns whether it's
-    /// still open. Input is committed once per frame by the caller.
-    fn poll(&mut self, glfw: &mut Glfw) -> bool {
+    /// still open. Input is committed once per frame by the caller. Each event
+    /// is also passed to `on_event` when an observer is registered.
+    fn poll(&mut self, glfw: &mut Glfw, mut on_event: Option<&mut dyn FnMut(&WindowEvent)>) -> bool {
         let surface = match self.surface {
             Some(s) => s,
             None => {
                 for (_, event) in glfw::flush_messages(&self.events) {
+                    if let Some(f) = on_event.as_deref_mut() {
+                        f(&event);
+                    }
                     if event == WindowEvent::Close {
                         self.window.hide();
                         return false;
@@ -354,6 +406,9 @@ impl ManagedWindow {
 
         let mut pending_resize: Option<(i32, i32)> = None;
         for (_, event) in glfw::flush_messages(&self.events) {
+            if let Some(f) = on_event.as_deref_mut() {
+                f(&event);
+            }
             match event {
                 WindowEvent::Close => {
                     self.window.hide();

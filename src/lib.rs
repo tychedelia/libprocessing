@@ -98,6 +98,27 @@ pub fn init(config: Config) -> error::Result<()> {
     Ok(())
 }
 
+/// Initialize the app, if not already initialized, giving the caller a hook to modify the
+/// [`App`] (e.g. register additional plugins) before plugin setup is finalized. Same
+/// constraints as [`init`]: main thread only, not concurrently.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn init_with(config: Config, f: impl FnOnce(&mut App)) -> error::Result<()> {
+    if processing_core::is_already_init()? {
+        return Ok(());
+    }
+    setup_tracing(config.get(ConfigKey::LogLevel).map(|s| s.as_str()))?;
+
+    let mut app = create_app(config);
+    f(&mut app);
+    // see `init` for why finish/cleanup/update happen here
+    app.finish();
+    app.cleanup();
+    app.update();
+    processing_core::set_app(app);
+
+    Ok(())
+}
+
 /// Initialize the app asynchronously
 #[cfg(target_arch = "wasm32")]
 pub async fn init(config: Config) -> error::Result<()> {

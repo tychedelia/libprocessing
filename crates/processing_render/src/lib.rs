@@ -556,6 +556,11 @@ pub fn graphics_present(graphics_entity: Entity) -> error::Result<()> {
     app_mut(|app| graphics::present(app, graphics_entity))
 }
 
+/// Present the current frame for several graphics surfaces in a single app update.
+pub fn graphics_present_all(graphics_entities: &[Entity]) -> error::Result<()> {
+    app_mut(|app| graphics::present_all(app, graphics_entities))
+}
+
 /// End the current draw pass for the graphics surface.
 pub fn graphics_end_draw(graphics_entity: Entity) -> error::Result<()> {
     app_mut(|app| graphics::end_draw(app, graphics_entity))
