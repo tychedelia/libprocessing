@@ -23,6 +23,8 @@ pub(crate) mod math;
 mod midi;
 mod monitor;
 pub(crate) mod particles;
+#[cfg(feature = "video")]
+mod record;
 pub(crate) mod shader;
 mod surface;
 mod time;
@@ -968,11 +970,22 @@ mod mewnala {
                     wg.bind(py).borrow().end_draw()?;
                 }
 
+                #[cfg(feature = "video")]
+                {
+                    let entity = get_graphics(module)?
+                        .ok_or_else(|| PyRuntimeError::new_err("call size() first"))?
+                        .entity;
+                    record::capture(entity)?;
+                }
+
                 update_loop_state(|s| s.redraw_requested = false);
             }
 
             Ok(())
         });
+
+        #[cfg(feature = "video")]
+        record::finish_on_exit();
 
         // tear down the app while the thread-local is still alive; the eager
         // TLS destructor aborts inside a Bevy resource drop
@@ -2252,6 +2265,29 @@ mod mewnala {
     #[pyfunction]
     fn create_video(path: &str) -> PyResult<video::Video> {
         video::Video::new(path)
+    }
+
+    /// Start recording the canvas to a video file (Processing `beginRecord`).
+    /// Frames are timestamped at `1 / fps` regardless of render time.
+    /// `crf`: 0 (lossless) to 51, default 23. `preset`: x264 speed/size
+    /// trade-off, `"ultrafast"` .. `"veryslow"`.
+    #[cfg(feature = "video")]
+    #[pyfunction]
+    #[pyo3(signature = (filename, fps=60.0, crf=None, preset=None))]
+    fn begin_record(
+        filename: &str,
+        fps: f64,
+        crf: Option<u8>,
+        preset: Option<String>,
+    ) -> PyResult<()> {
+        record::begin(filename, fps, crf, preset)
+    }
+
+    /// Stop recording, finalize the video file, and return the frame count.
+    #[cfg(feature = "video")]
+    #[pyfunction]
+    fn end_record() -> PyResult<u64> {
+        record::end()
     }
 
     #[cfg(feature = "webcam")]

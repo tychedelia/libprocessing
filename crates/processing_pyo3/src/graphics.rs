@@ -151,6 +151,23 @@ fn composite_apply(
     graphics_apply_filter(dst, filter).map_err(rt_err)
 }
 
+/// Read a graphics canvas back as sRGB-encoded RGBA8 bytes plus pixel dimensions.
+pub(crate) fn readback_rgba8(entity: Entity) -> PyResult<(Vec<u8>, u32, u32)> {
+    let raw = graphics_readback_raw(entity).map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+    let rgba = match raw.format {
+        TextureFormat::Rgba8UnormSrgb => raw.bytes,
+        _ => {
+            let pixels =
+                graphics_readback(entity).map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
+            pixels
+                .iter()
+                .flat_map(|pixel| Srgba::from(*pixel).to_u8_array())
+                .collect()
+        }
+    };
+    Ok((rgba, raw.width, raw.height))
+}
+
 /// Write raw sRGB RGBA bytes to a PNG file on disk.
 fn write_png_file(path: &str, width: u32, height: u32, rgba: &[u8]) -> PyResult<()> {
     let lower = path.to_lowercase();
@@ -947,25 +964,11 @@ impl Graphics {
     }
 
     pub fn readback_png(&self) -> PyResult<Vec<u8>> {
-        let raw = graphics_readback_raw(self.entity)
-            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
-
-        // png-ify our raw data, for srgb formats we're already good
-        let rgba_bytes = match raw.format {
-            TextureFormat::Rgba8UnormSrgb => raw.bytes,
-            _ => {
-                let pixels = graphics_readback(self.entity)
-                    .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
-                pixels
-                    .iter()
-                    .flat_map(|pixel| Srgba::from(*pixel).to_u8_array())
-                    .collect()
-            }
-        };
+        let (rgba_bytes, width, height) = readback_rgba8(self.entity)?;
 
         let mut png_buf: Vec<u8> = Vec::new();
         {
-            let mut encoder = png::Encoder::new(&mut png_buf, raw.width, raw.height);
+            let mut encoder = png::Encoder::new(&mut png_buf, width, height);
             // todo: infer these from the texture format instead of hardcoding
             encoder.set_color(png::ColorType::Rgba);
             encoder.set_depth(png::BitDepth::Eight);
@@ -983,20 +986,8 @@ impl Graphics {
 
     /// Save the current canvas to a PNG file (Processing `save`).
     pub fn save(&self, filename: &str) -> PyResult<()> {
-        let raw = graphics_readback_raw(self.entity)
-            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
-        let rgba = match raw.format {
-            TextureFormat::Rgba8UnormSrgb => raw.bytes,
-            _ => {
-                let pixels = graphics_readback(self.entity)
-                    .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
-                pixels
-                    .iter()
-                    .flat_map(|pixel| Srgba::from(*pixel).to_u8_array())
-                    .collect()
-            }
-        };
-        write_png_file(filename, raw.width, raw.height, &rgba)
+        let (rgba, width, height) = readback_rgba8(self.entity)?;
+        write_png_file(filename, width, height, &rgba)
     }
 
     /// Read a single pixel as a `Color` (Processing `get`).

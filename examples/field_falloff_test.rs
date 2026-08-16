@@ -1,8 +1,4 @@
-//! Validates the shared `falloff` WESL helper (task #10) end-to-end: dispatches
-//! the `field` kernel (which now `import`s `processing::particles::falloff`) over
-//! particles at known distances and checks the weights against CPU falloff.
-//!
-//! Run: `cargo run --example field_falloff_test`. Exits non-zero on mismatch.
+//! Shared `falloff` WESL helper against CPU falloff at known distances.
 
 use bevy::prelude::Entity;
 use processing::prelude::*;
@@ -21,7 +17,6 @@ fn approx(a: &[f32], b: &[f32]) -> bool {
     a.len() == b.len() && a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-5)
 }
 
-// Particles along +x at distances 0, 0.5, 1.0, 1.5 from the origin.
 const DISTS: [f32; 4] = [0.0, 0.5, 1.0, 1.5];
 
 fn cpu_falloff(d: f32, mode: u32) -> f32 {
@@ -70,8 +65,7 @@ fn sketch() -> error::Result<bool> {
         ok &= run_mode(field, pos, weight, mode)?;
     }
 
-    // The other falloff users share the same import — instantiate them so their
-    // WESL actually compiles (compute_create errors if the import is broken).
+    // Instantiate the other falloff importers so their WESL compiles too.
     for (name, r) in [
         ("attract", particles_kernel_attract()),
         ("vortex", particles_kernel_vortex()),

@@ -1,7 +1,4 @@
-//! Validation harness for the glue algebra verbs (task #7): `reduce_components`,
-//! `extract`, `pack`, `generate`.
-//!
-//! Run: `cargo run --example glue_test`. Exits non-zero on mismatch.
+//! Glue algebra verbs: `reduce_components`, `extract`, `pack`, `generate`.
 
 use processing::prelude::*;
 
@@ -25,10 +22,8 @@ fn sketch() -> error::Result<bool> {
 
     let mut ok = true;
 
-    // Float3 velocities for reduce/extract.
     let vel = vec![3.0f32, 4.0, 0.0, 1.0, 2.0, 2.0, 0.0, 0.0, 7.0, 5.0, 0.0, 0.0];
 
-    // --- reduce_components LENGTH: speed = |velocity| ---
     let v = buffer_create_with_data(to_bytes(&vel))?;
     let speed = buffer_create_with_data(to_bytes(&vec![0.0; 4]))?;
     reduce_components(speed, v, 3, REDUCE_LENGTH)?;
@@ -40,7 +35,6 @@ fn sketch() -> error::Result<bool> {
         println!("  FAIL reduce LENGTH: got {got:?}, want [5,3,7,5]");
     }
 
-    // --- extract component 1 (.y) ---
     let y = buffer_create_with_data(to_bytes(&vec![0.0; 4]))?;
     extract(y, v, 3, 1)?;
     let got_y = f32s(&buffer_read(y)?);
@@ -54,7 +48,6 @@ fn sketch() -> error::Result<bool> {
     buffer_destroy(speed)?;
     buffer_destroy(y)?;
 
-    // --- pack 3 scalar buffers -> Float3 ---
     let xs = buffer_create_with_data(to_bytes(&[1.0, 2.0, 3.0]))?;
     let ys = buffer_create_with_data(to_bytes(&[10.0, 20.0, 30.0]))?;
     let zs = buffer_create_with_data(to_bytes(&[100.0, 200.0, 300.0]))?;
@@ -75,7 +68,6 @@ fn sketch() -> error::Result<bool> {
     buffer_destroy(zs)?;
     buffer_destroy(packed)?;
 
-    // --- generate: uniform in [0,1), deterministic in seed ---
     let g1 = buffer_create_with_data(to_bytes(&vec![0.0; 16]))?;
     let g2 = buffer_create_with_data(to_bytes(&vec![0.0; 16]))?;
     let g3 = buffer_create_with_data(to_bytes(&vec![0.0; 16]))?;
@@ -88,7 +80,6 @@ fn sketch() -> error::Result<bool> {
     let in_range = a.iter().all(|x| (0.0..1.0).contains(x));
     let deterministic = approx(&a, &b);
     let seed_varies = !approx(&a, &c);
-    // basic spread sanity: not all identical
     let varied = a.windows(2).any(|w| (w[0] - w[1]).abs() > 1e-6);
     if in_range && deterministic && seed_varies && varied {
         println!("  PASS generate uniform (in-range, deterministic, seed-sensitive)");

@@ -1,14 +1,4 @@
-//! Validation harness for the `map` algebra verb (task #5) and, underneath it,
-//! the WESL `@if(in_place)` specialization + `shader_create_with_features`
-//! infra (task #4's chosen approach).
-//!
-//! Checks:
-//!  - both pipelines (in-place / out-of-place) compile from one source;
-//!  - in-place `map` (dst == a) transforms EVERY component of a Float3 buffer
-//!    (the old scalar attr_* kernels left most of a wide attribute untouched);
-//!  - out-of-place `map` writes `dst = f(a)` and leaves `a` unchanged.
-//!
-//! Run: `cargo run --example map_test`. Exits non-zero on mismatch.
+//! `map` algebra verb: in-place and out-of-place pipelines from one WESL source.
 
 use processing::prelude::*;
 
@@ -30,15 +20,12 @@ fn sketch() -> error::Result<bool> {
     let surface = surface_create_offscreen(1, 1, 1.0, TextureFormat::Rgba8Unorm)?;
     let _graphics = graphics_create(surface, 1, 1, TextureFormat::Rgba8Unorm)?;
 
-    // 5 particles x 3 components = 15 floats. The old bug would only touch the
-    // first 5 floats; component-generic map must touch all 15.
     let n_particles = 5u32;
     let components = 3u32;
     let input: Vec<f32> = (0..(n_particles * components)).map(|i| i as f32).collect();
 
     let mut ok = true;
 
-    // --- in-place: a *= 2 + 1 ---
     let a = buffer_create_with_data(to_bytes(&input))?;
     map(a, a, components, MAP_AFFINE, 2.0, 1.0)?;
     let got = f32s(&buffer_read(a)?);
@@ -51,7 +38,6 @@ fn sketch() -> error::Result<bool> {
     }
     buffer_destroy(a)?;
 
-    // --- out-of-place: dst = |a|, a unchanged ---
     let neg: Vec<f32> = (0..(n_particles * components))
         .map(|i| -(i as f32) - 0.5)
         .collect();

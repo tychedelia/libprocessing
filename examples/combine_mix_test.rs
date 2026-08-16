@@ -1,9 +1,4 @@
-//! Validation harness for the `combine` and `mix` algebra verbs (task #5),
-//! including the alias guard (a `dst` that aliases a read-only operand must be
-//! rejected in Rust, NOT reach wgpu — where it would be a fatal validation
-//! error, see `examples/alias_spike.rs`).
-//!
-//! Run: `cargo run --example combine_mix_test`. Exits non-zero on mismatch.
+//! `combine` and `mix` algebra verbs, including the operand-alias guard.
 
 use processing::prelude::*;
 
@@ -27,7 +22,6 @@ fn sketch() -> error::Result<bool> {
 
     let mut ok = true;
 
-    // --- combine in-place: a += b (Float3, 4 particles) ---
     let av: Vec<f32> = (0..12).map(|i| i as f32).collect();
     let bv: Vec<f32> = (0..12).map(|i| (i * 10) as f32).collect();
     let a = buffer_create_with_data(to_bytes(&av))?;
@@ -42,7 +36,6 @@ fn sketch() -> error::Result<bool> {
         println!("  FAIL combine in-place: got {got:?}, want {want:?}");
     }
 
-    // --- combine out-of-place: dst = a * b, inputs preserved ---
     let dst = buffer_create_with_data(to_bytes(&vec![0.0; 12]))?;
     combine(dst, a, b, 3, COMBINE_MUL, 1.0, 0.0)?;
     let got_dst = f32s(&buffer_read(dst)?);
@@ -55,7 +48,6 @@ fn sketch() -> error::Result<bool> {
         println!("  FAIL combine out-of-place: dst={got_dst:?} want {want_dst:?}");
     }
 
-    // --- alias guard: combine(dst=b, a, b) must be rejected in Rust ---
     match combine(b, a, b, 3, COMBINE_ADD, 1.0, 0.0) {
         Err(_) => println!("  PASS combine alias guard (dst==b rejected before dispatch)"),
         Ok(()) => {
@@ -68,11 +60,9 @@ fn sketch() -> error::Result<bool> {
     buffer_destroy(b)?;
     buffer_destroy(dst)?;
 
-    // --- mix out-of-place: dst = lerp(a, b, t), t per-particle broadcast ---
-    // 3 particles x 4 components (color-like); t = [0, 0.5, 1].
     let comps = 4u32;
-    let a2: Vec<f32> = vec![1.0; 12]; // all-ones
-    let b2: Vec<f32> = vec![3.0; 12]; // all-threes
+    let a2: Vec<f32> = vec![1.0; 12];
+    let b2: Vec<f32> = vec![3.0; 12];
     let tv = vec![0.0f32, 0.5, 1.0];
     let am = buffer_create_with_data(to_bytes(&a2))?;
     let bm = buffer_create_with_data(to_bytes(&b2))?;
@@ -80,7 +70,6 @@ fn sketch() -> error::Result<bool> {
     let dm = buffer_create_with_data(to_bytes(&vec![0.0; 12]))?;
     mix(dm, am, bm, tm, comps, 1.0, 0.0, true)?;
     let got_mix = f32s(&buffer_read(dm)?);
-    // particle 0 -> a(1.0), particle 1 -> midpoint(2.0), particle 2 -> b(3.0)
     let mut want_mix = vec![1.0f32; 4];
     want_mix.extend([2.0f32; 4]);
     want_mix.extend([3.0f32; 4]);
@@ -91,7 +80,6 @@ fn sketch() -> error::Result<bool> {
         println!("  FAIL mix out-of-place: got {got_mix:?}, want {want_mix:?}");
     }
 
-    // --- mix in-place: a = lerp(a, b, t) ---
     mix(am, am, bm, tm, comps, 1.0, 0.0, true)?;
     let got_mix_ip = f32s(&buffer_read(am)?);
     if approx(&got_mix_ip, &want_mix) {

@@ -1,8 +1,4 @@
-//! Validation harness for the GPU→CPU reduction (`reduce`): sum / min / max over
-//! an f32 buffer, read back to the host. Covers single- and multi-level (n>256)
-//! reductions. Values stay under 2^24 so f32 sums are exact.
-//!
-//! Run: `cargo run --example reduce_test`. Exits non-zero on mismatch.
+//! GPU->CPU `reduce` (sum / min / max), single- and multi-level.
 
 use bevy::prelude::Entity;
 use processing::prelude::*;
@@ -38,26 +34,22 @@ fn sketch() -> error::Result<bool> {
 
     let mut ok = true;
 
-    // all-ones, single level
     let (s, mn, mx) = reduce_all(&vec![1.0; 1000])?;
     ok &= check("ones/1000 sum", s, 1000.0);
     ok &= check("ones/1000 min", mn, 1.0);
     ok &= check("ones/1000 max", mx, 1.0);
 
-    // ramp 0..300
     let ramp: Vec<f32> = (0..300).map(|i| i as f32).collect();
     let (s, mn, mx) = reduce_all(&ramp)?;
     ok &= check("ramp/300 sum", s, 300.0 * 299.0 / 2.0);
     ok &= check("ramp/300 min", mn, 0.0);
     ok &= check("ramp/300 max", mx, 299.0);
 
-    // multi-level: all-ones n=70000
     let (s, mn, mx) = reduce_all(&vec![1.0; 70_000])?;
     ok &= check("ones/70k sum", s, 70_000.0);
     ok &= check("ones/70k min", mn, 1.0);
     ok &= check("ones/70k max", mx, 1.0);
 
-    // multi-level min/max: ramp 0..70000
     let big: Vec<f32> = (0..70_000).map(|i| i as f32).collect();
     let b = buffer_create_with_data(to_bytes(&big))?;
     ok &= check("ramp/70k min", reduce(b, REDUCE_OP_MIN)?, 0.0);

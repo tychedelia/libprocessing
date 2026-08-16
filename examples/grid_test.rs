@@ -1,10 +1,4 @@
-//! Validation harness for the bounded uniform spatial hash grid
-//! (`grid_create` / `grid_build`). Places particles at known cell centres,
-//! builds the grid on the GPU, reads back the CSR `offsets` and `sorted`
-//! buffers, and checks them against a CPU reference: exact offsets, and each
-//! cell's bucket membership as a set (intra-cell order is atomic-nondeterministic).
-//!
-//! Run: `cargo run --example grid_test`. Exits non-zero on any mismatch.
+//! Spatial hash grid (`grid_create` / `grid_build`) against a CPU reference.
 
 use std::collections::BTreeSet;
 
@@ -41,7 +35,6 @@ fn sketch() -> error::Result<bool> {
     let capacity: u32 = 40;
     let num_cells = (DIMS[0] * DIMS[1] * DIMS[2]) as usize;
 
-    // Deterministic spread across cells with varying occupancy (incl. empties).
     let cells: Vec<[u32; 3]> = (0..capacity)
         .map(|i| [(i * 7) % 4, (i * 13) % 4, (i * 5) % 4])
         .collect();
@@ -67,7 +60,6 @@ fn sketch() -> error::Result<bool> {
     let offsets = bytes_to_u32s(&buffer_read(grid.offsets)?);
     let sorted = bytes_to_u32s(&buffer_read(grid.sorted)?);
 
-    // CPU reference.
     let mut counts = vec![0u32; num_cells];
     for i in 0..capacity as usize {
         counts[cpu_cell(positions[i]) as usize] += 1;
@@ -93,7 +85,6 @@ fn sketch() -> error::Result<bool> {
         println!("  PASS offsets (total={})", expected_offsets[num_cells]);
     }
 
-    // Bucket membership per cell, compared as sets.
     let mut buckets_ok = true;
     for c in 0..num_cells {
         let (s, e) = (expected_offsets[c] as usize, expected_offsets[c + 1] as usize);
