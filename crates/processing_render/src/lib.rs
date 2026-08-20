@@ -537,6 +537,19 @@ pub fn graphics_create(
     })
 }
 
+/// Update a graphics entity's projection after its surface changed size.
+///
+/// Pair with `surface_resize`: that reconfigures the swapchain, this keeps the
+/// projection matching, otherwise the drawing stays scaled for the old size.
+/// Takes LOGICAL size, the same units `graphics_create` was given.
+pub fn graphics_resize(graphics_entity: Entity, width: u32, height: u32) -> error::Result<()> {
+    app_mut(|app| {
+        app.world_mut()
+            .run_system_cached_with(graphics::resize, (graphics_entity, width, height))
+            .unwrap()
+    })
+}
+
 /// Begin a new draw pass for the graphics surface.
 pub fn graphics_begin_draw(graphics_entity: Entity) -> error::Result<()> {
     app_mut(|app| {

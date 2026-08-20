@@ -95,6 +95,27 @@ impl GlfwContext {
 
         window.set_all_polling(true);
 
+        // GLFW screen coordinates are logical points on macOS (the framebuffer
+        // is already 2x on retina) but PIXELS on Windows. Where they are
+        // pixels, a window created at the requested size comes out physically
+        // small on a HiDPI display and the UI only gets width/scale points to
+        // lay out in. Grow it so callers always get `width x height` POINTS of
+        // usable area, whatever the platform convention is.
+        //
+        // Detected empirically rather than by cfg: the framebuffer matching the
+        // window size IS the "screen coordinates are pixels" case.
+        {
+            let (scale, _) = window.get_content_scale();
+            let (fb_w, _) = window.get_framebuffer_size();
+            let (win_w, _) = window.get_size();
+            if scale > 1.0 && fb_w == win_w {
+                window.set_size(
+                    (width as f32 * scale).round() as i32,
+                    (height as f32 * scale).round() as i32,
+                );
+            }
+        }
+
         // Set _NET_WM_WINDOW_TYPE_DIALOG so tiling WMs (i3, sway) float the window
         #[cfg(all(target_os = "linux", feature = "x11"))]
         unsafe {
