@@ -18,7 +18,13 @@ cuda = ["dep:processing_cuda", "processing_cuda/cuda"]
 resolver = "3"
 members = ["crates/*", "tools/*"]
 # TEMP(bevy-020): midi/audio pin bevy 0.19
-exclude = ["crates/processing_audio", "crates/processing_midi"]
+# processing_laser is a standalone workspace: it reaches host crates that only
+# exist in the vendored layout (laser repo), so standalone builds skip it.
+exclude = [
+  "crates/processing_audio",
+  "crates/processing_midi",
+  "crates/processing_laser",
+]
 
 [workspace.lints.clippy]
 type_complexity = "allow"

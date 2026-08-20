@@ -1,0 +1,33 @@
+[package]
+name = "processing_laser"
+version = "0.0.1"
+edition = "2024"
+
+# The laser rig's native engine behind a thread-safe C ABI, packaged like
+# processing_ffi (cbindgen header -> gradle cargo build -> bundled dylib ->
+# jextract bindings). Unlike processing_ffi, every function here may be called
+# from any thread: state lives on an internal engine thread reached via a
+# command channel, and reads are lock-free ArcSwap snapshots.
+#
+# Standalone workspace: only buildable in the vendored layout, where the
+# laser repo's crates sit five levels up. Excluded from the libprocessing
+# workspace so standalone clones are unaffected.
+[workspace]
+
+[lib]
+name = "processing_laser"
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+laser-engine = { path = "../../../../../crates/laser-engine" }
+laser-rt = { path = "../../../../../crates/laser-rt" }
+arc-swap = "1"
+serde_json = "1"
+
+[build-dependencies]
+cbindgen = "0.29"
+
+[patch.crates-io]
+# laser-rt wants lasy ^0.4; use the co-developed local checkout (same patch
+# the laser workspace root carries)
+lasy = { path = "../../../../../../../nannou-org/lasy" }
