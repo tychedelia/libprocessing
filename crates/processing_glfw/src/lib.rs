@@ -610,8 +610,24 @@ impl ManagedWindow {
             last.position = pos;
         }
         if desired.size != last.size && desired.size.x > 0 && desired.size.y > 0 {
-            self.window
-                .set_size(desired.size.x as i32, desired.size.y as i32);
+            // Bevy's WindowResolution width()/height() are LOGICAL, but GLFW's
+            // set_size takes SCREEN COORDINATES - logical points on macOS,
+            // PIXELS on Windows. Pushing logical straight through halved the
+            // window at 200% scaling, so maximising snapped it back to half the
+            // screen. Convert: screen = logical * scale * (window / framebuffer),
+            // which is a no-op wherever screen coordinates are already points.
+            let (fb_w, _) = self.window.get_framebuffer_size();
+            let (win_w, _) = self.window.get_size();
+            let (scale, _) = self.window.get_content_scale();
+            let k = if fb_w > 0 && win_w > 0 {
+                (win_w as f32 / fb_w as f32) * scale
+            } else {
+                1.0
+            };
+            self.window.set_size(
+                (desired.size.x as f32 * k).round() as i32,
+                (desired.size.y as f32 * k).round() as i32,
+            );
             last.size = desired.size;
         }
         if desired.visible != last.visible {
