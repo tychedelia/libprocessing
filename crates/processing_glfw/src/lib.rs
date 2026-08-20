@@ -265,6 +265,24 @@ impl GlfwContext {
     ) -> Result<Entity> {
         let (scale_factor, _) = self.windows[idx].window.get_content_scale();
 
+        // spawn_surface sizes the swapchain as `width * scale_factor`, which
+        // assumes GLFW screen coordinates are LOGICAL points. That holds on
+        // macOS but not on Windows, where screen coordinates are already
+        // pixels and the framebuffer equals the window size - there the
+        // multiply produced a swapchain twice the window, so the UI rendered
+        // 2x and the cursor no longer lined up. Derive the logical size from
+        // the real framebuffer instead, so `logical * scale == framebuffer`
+        // on every platform (and macOS is unchanged).
+        let (fb_w, fb_h) = self.windows[idx].window.get_framebuffer_size();
+        let (width, height) = if fb_w > 0 && fb_h > 0 && scale_factor > 0.0 {
+            (
+                (fb_w as f32 / scale_factor).round() as u32,
+                (fb_h as f32 / scale_factor).round() as u32,
+            )
+        } else {
+            (width, height)
+        };
+
         #[cfg(target_os = "macos")]
         let entity = {
             use processing_render::surface_create_macos;
@@ -348,6 +366,21 @@ impl GlfwContext {
         self.windows
             .first_mut()
             .and_then(|w| w.window.get_clipboard_string())
+    }
+
+    /// Framebuffer size of the main window, in PIXELS.
+    ///
+    /// Not interchangeable with `window_size`: on macOS that is logical points
+    /// (half of this on a retina display), on Windows it is already pixels.
+    /// The true device pixel ratio is `framebuffer_size / window_size`.
+    pub fn framebuffer_size(&self) -> (u32, u32) {
+        self.windows
+            .first()
+            .map(|w| {
+                let (width, height) = w.window.get_framebuffer_size();
+                (width as u32, height as u32)
+            })
+            .unwrap_or((0, 0))
     }
 
     /// Content scale (DPI) of the main window.
