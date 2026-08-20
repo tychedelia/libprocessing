@@ -20,7 +20,7 @@ crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
 laser-engine = { path = "../../../../../crates/laser-engine" }
-laser-rt = { path = "../../../../../crates/laser-rt" }
+laser-rt = { path = "../../../../../crates/laser-rt", features = ["dac"] }
 arc-swap = "1"
 serde_json = "1"
 
