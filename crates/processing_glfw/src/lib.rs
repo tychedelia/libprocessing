@@ -109,10 +109,20 @@ impl GlfwContext {
             let (fb_w, _) = window.get_framebuffer_size();
             let (win_w, _) = window.get_size();
             if scale > 1.0 && fb_w == win_w {
-                window.set_size(
-                    (width as f32 * scale).round() as i32,
-                    (height as f32 * scale).round() as i32,
-                );
+                let mut w = (width as f32 * scale).round() as i32;
+                let mut h = (height as f32 * scale).round() as i32;
+                // ...but never larger than the display. At 200% on a 1920x1080
+                // laptop a 1440x900-POINT window is 2880x1800 px - wider than
+                // the whole screen, which leaves it hanging off the edge and
+                // makes maximise look like it is not filling the monitor.
+                let area = glfw.with_primary_monitor(|_, m| m.map(|m| m.get_workarea()));
+                if let Some((_, _, aw, ah)) = area {
+                    if aw > 0 && ah > 0 {
+                        w = w.min(aw);
+                        h = h.min(ah);
+                    }
+                }
+                window.set_size(w, h);
             }
         }
 
