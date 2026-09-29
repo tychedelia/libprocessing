@@ -257,6 +257,10 @@ name = "compute_write_order"
 path = "examples/compute_write_order.rs"
 
 [[example]]
+name = "neighbors_test"
+path = "examples/neighbors_test.rs"
+
+[[example]]
 name = "alias_spike"
 path = "examples/alias_spike.rs"
 
