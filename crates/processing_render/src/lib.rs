@@ -2425,7 +2425,7 @@ fn buffer_write_range(
             .get::<compute::Buffer>(entity)
             .ok_or(error::ProcessingError::BufferNotFound)?
             .synced;
-        // next read will refresh 
+        // next read will refresh
         if on_gpu && !synced {
             return Ok(());
         }
