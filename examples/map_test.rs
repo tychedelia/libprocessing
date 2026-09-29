@@ -62,6 +62,37 @@ fn sketch() -> error::Result<bool> {
     buffer_destroy(a2)?;
     buffer_destroy(dst)?;
 
+    // lengths 5, 0.5 and 0
+    let vectors = [3.0f32, 4.0, 0.0, 0.3, 0.0, 0.4, 0.0, 0.0, 0.0];
+    let cases = [
+        (
+            "normalize to 2",
+            MAP_NORMALIZE,
+            2.0,
+            0.0,
+            [1.2, 1.6, 0.0, 1.2, 0.0, 1.6, 0.0, 0.0, 0.0],
+        ),
+        (
+            "limit to 1..4",
+            MAP_LIMIT,
+            1.0,
+            4.0,
+            [2.4, 3.2, 0.0, 0.6, 0.0, 0.8, 0.0, 0.0, 0.0],
+        ),
+    ];
+    for (what, op, p0, p1, want) in cases {
+        let v = buffer_create_with_data(to_bytes(&vectors))?;
+        map(v, v, 3, op, p0, p1)?;
+        let got = f32s(&buffer_read(v)?);
+        if approx(&got, &want) {
+            println!("  PASS {what}: {got:?}");
+        } else {
+            ok = false;
+            println!("  FAIL {what}: got {got:?}, want {want:?}");
+        }
+        buffer_destroy(v)?;
+    }
+
     Ok(ok)
 }
 

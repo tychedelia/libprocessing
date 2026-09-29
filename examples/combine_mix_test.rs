@@ -94,6 +94,28 @@ fn sketch() -> error::Result<bool> {
     buffer_destroy(tm)?;
     buffer_destroy(dm)?;
 
+    // one scalar per particle scales each whole vector
+    let vectors: Vec<f32> = (0..12).map(|i| i as f32).collect();
+    let v = buffer_create_with_data(to_bytes(&vectors))?;
+    let scalars = buffer_create_with_data(to_bytes(&[0.0, 1.0, 2.0, -1.0]))?;
+    combine(v, v, scalars, 3, COMBINE_MUL, 1.0, 0.0)?;
+    let got = f32s(&buffer_read(v)?);
+    let want: Vec<f32> = vectors
+        .iter()
+        .enumerate()
+        .map(|(i, x)| x * [0.0, 1.0, 2.0, -1.0][i / 3])
+        .collect();
+    let mismatch = buffer_create_with_data(to_bytes(&[1.0, 2.0]))?;
+    let rejected = combine(v, v, mismatch, 3, COMBINE_MUL, 1.0, 0.0).is_err();
+    if approx(&got, &want) && rejected {
+        println!("  PASS combine broadcasts a scalar per particle: {got:?}");
+    } else {
+        ok = false;
+        println!(
+            "  FAIL combine broadcast: got {got:?}, want {want:?}, mismatch rejected {rejected}"
+        );
+    }
+
     Ok(ok)
 }
 
