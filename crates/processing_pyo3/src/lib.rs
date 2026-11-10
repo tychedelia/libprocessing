@@ -1266,6 +1266,33 @@ pub mod processing_py {
 
     #[pyfunction]
     #[pyo3(pass_module)]
+    fn perspective(
+        module: &Bound<'_, PyModule>,
+        fov: f32,
+        aspect: f32,
+        near: f32,
+        far: f32,
+    ) -> PyResult<()> {
+        graphics!(module).perspective(fov, aspect, near, far)
+    }
+
+    #[pyfunction]
+    #[pyo3(pass_module)]
+    #[allow(clippy::too_many_arguments)]
+    fn ortho(
+        module: &Bound<'_, PyModule>,
+        left: f32,
+        right: f32,
+        bottom: f32,
+        top: f32,
+        near: f32,
+        far: f32,
+    ) -> PyResult<()> {
+        graphics!(module).ortho(left, right, bottom, top, near, far)
+    }
+
+    #[pyfunction]
+    #[pyo3(pass_module)]
     fn push_matrix(module: &Bound<'_, PyModule>) -> PyResult<()> {
         graphics!(module).push_matrix()
     }
