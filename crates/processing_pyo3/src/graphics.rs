@@ -124,23 +124,6 @@ fn normalize_src_rect(entity: Entity, rect: Option<[f32; 4]>) -> PyResult<[f32; 
     }
 }
 
-/// Resolve a composite source (`Image`, `Webcam`, or `Graphics`) to a
-/// texture-bearing entity, plus the graphics entity that must be flushed first
-/// when the source is a graphics (so its latest content is what gets sampled).
-/// A `Graphics` source uses its render-target surface entity, which carries an
-/// `Image` component for offscreen graphics.
-fn resolve_composite_source(src: &Bound<'_, PyAny>) -> PyResult<(Entity, Option<Entity>)> {
-    if let Ok(img) = src.extract::<ImageRef>() {
-        return Ok((img.entity, None));
-    }
-    if let Ok(g) = src.extract::<PyRef<Graphics>>() {
-        return Ok((g.surface.entity, Some(g.entity)));
-    }
-    Err(PyValueError::new_err(
-        "composite source must be an Image, Webcam, or Graphics",
-    ))
-}
-
 /// Run the built-in composite filter: blend the `src` texture into the `dst`
 /// graphics target using `mode`, with normalized src/dst rects. This is the
 /// shader-based composite pass shared by `copy`/`blend`/`mask`.
@@ -446,6 +429,36 @@ impl Light {
         let v = extract_vec3(args)?;
         transform_look_at(self.entity, v).map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
+
+    #[pyo3(signature = (*args))]
+    pub fn translate(&self, args: &Bound<'_, PyTuple>) -> PyResult<()> {
+        let v = extract_vec3(args)?;
+        transform_translate(self.entity, v).map_err(rt_err)
+    }
+
+    pub fn rotate_x(&self, angle: f32) -> PyResult<()> {
+        transform_rotate_x(self.entity, angle).map_err(rt_err)
+    }
+
+    pub fn rotate_y(&self, angle: f32) -> PyResult<()> {
+        transform_rotate_y(self.entity, angle).map_err(rt_err)
+    }
+
+    pub fn rotate_z(&self, angle: f32) -> PyResult<()> {
+        transform_rotate_z(self.entity, angle).map_err(rt_err)
+    }
+
+    /// Rotate by `angle` radians around `axis`.
+    #[pyo3(signature = (angle, *axis))]
+    pub fn rotate_axis(&self, angle: f32, axis: &Bound<'_, PyTuple>) -> PyResult<()> {
+        let axis = extract_vec3(axis)?;
+        transform_rotate_axis(self.entity, angle, axis).map_err(rt_err)
+    }
+
+    /// Back to the origin with no rotation.
+    pub fn reset(&self) -> PyResult<()> {
+        transform_reset(self.entity).map_err(rt_err)
+    }
 }
 
 impl Light {
@@ -565,8 +578,22 @@ impl Image {
     }
 }
 
+/// Anything that can be sampled as an image: an `Image`, a `Webcam`, or an
+/// offscreen `Graphics`.
 pub(crate) struct ImageRef {
-    pub entity: Entity,
+    entity: Entity,
+    graphics: Option<Entity>,
+}
+
+impl ImageRef {
+    /// The entity carrying the image. A `Graphics` source is flushed first, so
+    /// what it has drawn so far is what gets sampled.
+    pub(crate) fn texture(&self) -> PyResult<Entity> {
+        if let Some(graphics) = self.graphics {
+            graphics_flush(graphics).map_err(rt_err)?;
+        }
+        Ok(self.entity)
+    }
 }
 
 impl<'a, 'py> FromPyObject<'a, 'py> for ImageRef {
@@ -574,7 +601,10 @@ impl<'a, 'py> FromPyObject<'a, 'py> for ImageRef {
 
     fn extract(ob: pyo3::Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         if let Ok(img) = ob.extract::<PyRef<Image>>() {
-            return Ok(ImageRef { entity: img.entity });
+            return Ok(ImageRef {
+                entity: img.entity,
+                graphics: None,
+            });
         }
         // an offscreen Graphics renders into an image; a window has no texture to sample
         if let Ok(g) = ob.extract::<PyRef<Graphics>>() {
@@ -585,12 +615,14 @@ impl<'a, 'py> FromPyObject<'a, 'py> for ImageRef {
             }
             return Ok(ImageRef {
                 entity: g.surface.entity,
+                graphics: Some(g.entity),
             });
         }
         #[cfg(feature = "webcam")]
         if let Ok(cam) = ob.extract::<PyRef<crate::webcam::Webcam>>() {
             return Ok(ImageRef {
                 entity: cam.image_entity()?,
+                graphics: None,
             });
         }
         Err(pyo3::exceptions::PyTypeError::new_err(
@@ -627,6 +659,26 @@ impl Image {
     fn sampler(&self, sampler: &Sampler) -> PyResult<()> {
         image_set_sampler(self.entity, sampler.filter, sampler.wrap_x, sampler.wrap_y)
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    }
+
+    /// Resize to `width` x `height` pixels. A 0 for either keeps the aspect ratio.
+    pub fn resize(&self, width: u32, height: u32) -> PyResult<()> {
+        let (w, h) = image_size(self.entity).map_err(rt_err)?;
+        let (width, height) = match (width, height) {
+            (0, 0) => return Err(PyValueError::new_err("resize() needs a non-zero size")),
+            (0, height) => ((w as f32 * height as f32 / h as f32).round() as u32, height),
+            (width, 0) => (width, (h as f32 * width as f32 / w as f32).round() as u32),
+            size => size,
+        };
+        image_resize(
+            self.entity,
+            Extent3d {
+                width: width.max(1),
+                height: height.max(1),
+                depth_or_array_layers: 1,
+            },
+        )
+        .map_err(rt_err)
     }
 
     /// Image width in pixels.
@@ -863,7 +915,19 @@ impl Drop for Graphics {
     }
 }
 
+/// `mode_3d()`'s field of view.
+const DEFAULT_FOV: f32 = std::f32::consts::FRAC_PI_3;
+
 impl Graphics {
+    /// How far `mode_3d()` puts the camera: where the canvas fills the view.
+    fn default_camera_z(&self) -> f32 {
+        (self.height as f32 / 2.0) / (DEFAULT_FOV / 2.0).tan()
+    }
+
+    pub(crate) fn current_color_mode(&self) -> PyResult<ColorMode> {
+        graphics_get_color_mode(self.entity).map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    }
+
     /// Create an offscreen graphics buffer in the already-running app (no window,
     /// no `init`). Backs `create_graphics()` / `new_offscreen()`. The caller must
     /// ensure the app exists (i.e. `size()` was called first).
@@ -1003,6 +1067,17 @@ impl Graphics {
     #[getter]
     pub fn pixel_width(&self) -> PyResult<u32> {
         self.surface.pixel_width()
+    }
+
+    /// 0 for offscreen canvases, which have no window.
+    #[getter]
+    pub fn window_x(&self) -> i32 {
+        self.surface.position().map_or(0, |(x, _)| x)
+    }
+
+    #[getter]
+    pub fn window_y(&self) -> i32 {
+        self.surface.position().map_or(0, |(_, y)| y)
     }
 
     #[getter]
@@ -1151,19 +1226,112 @@ impl Graphics {
         .map(crate::color::PyColor::from)
     }
 
+    pub fn red(&self, color: crate::color::ColorLike) -> PyResult<f32> {
+        Ok(crate::color::red(
+            color.into_color()?,
+            &self.current_color_mode()?,
+        ))
+    }
+
+    pub fn green(&self, color: crate::color::ColorLike) -> PyResult<f32> {
+        Ok(crate::color::green(
+            color.into_color()?,
+            &self.current_color_mode()?,
+        ))
+    }
+
+    pub fn blue(&self, color: crate::color::ColorLike) -> PyResult<f32> {
+        Ok(crate::color::blue(
+            color.into_color()?,
+            &self.current_color_mode()?,
+        ))
+    }
+
+    pub fn alpha(&self, color: crate::color::ColorLike) -> PyResult<f32> {
+        Ok(crate::color::alpha(
+            color.into_color()?,
+            &self.current_color_mode()?,
+        ))
+    }
+
+    pub fn hue(&self, color: crate::color::ColorLike) -> PyResult<f32> {
+        Ok(crate::color::hue(
+            color.into_color()?,
+            &self.current_color_mode()?,
+        ))
+    }
+
+    pub fn saturation(&self, color: crate::color::ColorLike) -> PyResult<f32> {
+        Ok(crate::color::saturation(
+            color.into_color()?,
+            &self.current_color_mode()?,
+        ))
+    }
+
+    pub fn brightness(&self, color: crate::color::ColorLike) -> PyResult<f32> {
+        Ok(crate::color::brightness(
+            color.into_color()?,
+            &self.current_color_mode()?,
+        ))
+    }
+
+    pub fn lerp_color(
+        &self,
+        from: crate::color::ColorLike,
+        to: crate::color::ColorLike,
+        amount: f32,
+    ) -> PyResult<crate::color::PyColor> {
+        let color = crate::color::lerp_color(
+            from.into_color()?,
+            to.into_color()?,
+            amount,
+            &self.current_color_mode()?,
+        );
+        Ok(color.into())
+    }
+
+    /// `ARROW`, `CROSS`, `HAND`, `MOVE`, `TEXT` or `WAIT`. Also shows a hidden cursor.
+    #[pyo3(signature = (kind=constants::ARROW))]
+    pub fn cursor(&self, kind: &str) -> PyResult<()> {
+        use bevy::window::SystemCursorIcon;
+        let icon = match kind {
+            constants::ARROW => SystemCursorIcon::Default,
+            constants::CROSS => SystemCursorIcon::Crosshair,
+            constants::HAND => SystemCursorIcon::Pointer,
+            constants::MOVE => SystemCursorIcon::Move,
+            constants::TEXT => SystemCursorIcon::Text,
+            constants::WAIT => SystemCursorIcon::Wait,
+            _ => return Err(PyValueError::new_err(format!("unknown cursor: {kind:?}"))),
+        };
+        input_set_cursor_visible(self.surface.entity, true)
+            .and_then(|_| input_set_cursor_icon(self.surface.entity, icon))
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    }
+
+    pub fn no_cursor(&self) -> PyResult<()> {
+        input_set_cursor_visible(self.surface.entity, false)
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    }
+
+    /// A color (same arguments as `fill()`), or an `Image`, `Graphics` or
+    /// `Webcam` stretched over the canvas.
     #[pyo3(signature = (*args))]
     pub fn background(&self, args: &Bound<'_, PyTuple>) -> PyResult<()> {
+        if args.len() == 1
+            && let Ok(image) = args.get_item(0)?.extract::<ImageRef>()
+        {
+            return graphics_record_command(
+                self.entity,
+                DrawCommand::BackgroundImage(image.texture()?),
+            )
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")));
+        }
         let color = extract_color_with_mode(
             args,
             &graphics_get_color_mode(self.entity)
                 .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?,
         )?;
         graphics_record_command(self.entity, DrawCommand::BackgroundColor(color))
-            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
-    }
-
-    pub fn background_image(&self, image: &Image) -> PyResult<()> {
-        graphics_record_command(self.entity, DrawCommand::BackgroundImage(image.entity))
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
@@ -1844,7 +2012,7 @@ impl Graphics {
         graphics_record_command(
             self.entity,
             DrawCommand::Image {
-                entity: source.entity,
+                entity: source.texture()?,
                 dx,
                 dy,
                 d_width,
@@ -2233,7 +2401,7 @@ impl Graphics {
     }
 
     pub fn texture(&self, source: ImageRef) -> PyResult<()> {
-        graphics_record_command(self.entity, DrawCommand::Texture(source.entity))
+        graphics_record_command(self.entity, DrawCommand::Texture(source.texture()?))
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
@@ -2366,10 +2534,7 @@ impl Graphics {
                  MULTIPLY, SCREEN, REPLACE)",
             )
         })?;
-        let (src_entity, flush) = resolve_composite_source(src)?;
-        if let Some(g) = flush {
-            graphics_flush(g).map_err(rt_err)?;
-        }
+        let src_entity = src.extract::<ImageRef>()?.texture()?;
         let sr = normalize_src_rect(src_entity, src_rect)?;
         let dr = normalize_rect(dst_rect, self.width as f32, self.height as f32);
         composite_apply(self.entity, src_entity, code, sr, dr, opacity)
@@ -2385,10 +2550,7 @@ impl Graphics {
         src_rect: Option<[f32; 4]>,
         dst_rect: Option<[f32; 4]>,
     ) -> PyResult<()> {
-        let (src_entity, flush) = resolve_composite_source(src)?;
-        if let Some(g) = flush {
-            graphics_flush(g).map_err(rt_err)?;
-        }
+        let src_entity = src.extract::<ImageRef>()?.texture()?;
         let sr = normalize_src_rect(src_entity, src_rect)?;
         let dr = normalize_rect(dst_rect, self.width as f32, self.height as f32);
         composite_apply(self.entity, src_entity, COMPOSITE_MODE_REPLACE, sr, dr, 1.0)
@@ -2412,10 +2574,7 @@ impl Graphics {
     /// Applies a mask source's brightness as this graphics' alpha channel
     /// (Processing `mask`). `mask` may be an `Image`, webcam, or `Graphics`.
     pub fn mask(&self, mask: &Bound<'_, PyAny>) -> PyResult<()> {
-        let (src_entity, flush) = resolve_composite_source(mask)?;
-        if let Some(g) = flush {
-            graphics_flush(g).map_err(rt_err)?;
-        }
+        let src_entity = mask.extract::<ImageRef>()?.texture()?;
         composite_apply(
             self.entity,
             src_entity,
@@ -2505,30 +2664,77 @@ impl Graphics {
         transform_look_at(self.entity, v).map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
-    pub fn perspective(&self, fov: f32, aspect: f32, near: f32, far: f32) -> PyResult<()> {
+    /// `camera()` restores the default `mode_3d()` view. `camera(eye, center, up)`
+    /// takes three vectors, or nine numbers as in Processing.
+    #[pyo3(signature = (*args))]
+    pub fn camera(&self, args: &Bound<'_, PyTuple>) -> PyResult<()> {
+        let (eye, center, up) = match args.len() {
+            0 => (
+                Vec3::new(0.0, 0.0, self.default_camera_z()),
+                Vec3::ZERO,
+                Vec3::Y,
+            ),
+            3 | 9 => {
+                let n = args.len() / 3;
+                let part = |i: usize| extract_vec3(&args.get_slice(i * n, (i + 1) * n));
+                (part(0)?, part(1)?, part(2)?)
+            }
+            n => {
+                return Err(pyo3::exceptions::PyTypeError::new_err(format!(
+                    "camera() takes 0, 3 or 9 arguments ({n} given)"
+                )));
+            }
+        };
+        graphics_camera(self.entity, eye, center, up)
+            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+    }
+
+    /// Arguments left out take the `mode_3d()` defaults: 60 degree `fov`, the
+    /// canvas aspect, `near` 1 and `far` ten times the camera distance.
+    #[pyo3(signature = (fov=None, aspect=None, near=None, far=None))]
+    pub fn perspective(
+        &self,
+        fov: Option<f32>,
+        aspect: Option<f32>,
+        near: Option<f32>,
+        far: Option<f32>,
+    ) -> PyResult<()> {
+        let near = near.unwrap_or(1.0);
         graphics_perspective(
             self.entity,
-            fov,
-            aspect,
+            fov.unwrap_or(DEFAULT_FOV),
+            aspect.unwrap_or(self.width as f32 / self.height as f32),
             near,
-            far,
+            far.unwrap_or(self.default_camera_z() * 10.0),
             Vec4::new(0.0, 0.0, -1.0, -near),
         )
         .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
+    /// Defaults to the canvas bounds, `near` 0 and `far` ten times the camera
+    /// distance, as Processing's `ortho()`.
     #[allow(clippy::too_many_arguments)]
+    #[pyo3(signature = (left=None, right=None, bottom=None, top=None, near=None, far=None))]
     pub fn ortho(
         &self,
-        left: f32,
-        right: f32,
-        bottom: f32,
-        top: f32,
-        near: f32,
-        far: f32,
+        left: Option<f32>,
+        right: Option<f32>,
+        bottom: Option<f32>,
+        top: Option<f32>,
+        near: Option<f32>,
+        far: Option<f32>,
     ) -> PyResult<()> {
-        graphics_ortho(self.entity, left, right, bottom, top, near, far)
-            .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+        let (half_w, half_h) = (self.width as f32 / 2.0, self.height as f32 / 2.0);
+        graphics_ortho(
+            self.entity,
+            left.unwrap_or(-half_w),
+            right.unwrap_or(half_w),
+            bottom.unwrap_or(-half_h),
+            top.unwrap_or(half_h),
+            near.unwrap_or(0.0),
+            far.unwrap_or(self.default_camera_z() * 10.0),
+        )
+        .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
     pub fn orbit_camera(&self) -> PyResult<()> {
@@ -2736,11 +2942,6 @@ impl Graphics {
     #[getter]
     fn moved_y(&self) -> PyResult<f32> {
         input::moved_y()
-    }
-
-    #[getter]
-    fn mouse_wheel(&self) -> PyResult<f32> {
-        input::mouse_wheel()
     }
 
     #[getter]

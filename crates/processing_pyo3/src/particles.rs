@@ -118,6 +118,26 @@ fn parse_falloff(s: &str) -> PyResult<u32> {
     }
 }
 
+/// `emit()` data: flat numbers, or one value per particle (`[x, y, z]`, a `Color`, ...)
+/// converted like `Buffer.write`.
+fn emit_bytes(name: &str, value: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
+    let mut bytes = Vec::new();
+    for item in value.try_iter()? {
+        let item = item?;
+        // a bare int would become an i32 shader value; attributes are floats
+        if let Ok(f) = item.extract::<f32>() {
+            bytes.extend_from_slice(&f.to_le_bytes());
+            continue;
+        }
+        let sv = crate::material::py_to_shader_value(&item)?;
+        let b = sv.to_bytes().ok_or_else(|| {
+            PyTypeError::new_err(format!("attribute '{name}': unsupported value {sv:?}"))
+        })?;
+        bytes.extend_from_slice(&b);
+    }
+    Ok(bytes)
+}
+
 #[pyclass(unsendable)]
 pub struct Grid {
     pub(crate) entity: Entity,
@@ -900,9 +920,10 @@ impl Particles {
     /// built-in name (`"position"`, `"velocity"`, `"color"`, `"scale"`, `"life"`,
     /// `"age"`, `"normal"`, `"uv"`, `"rotation"`), the name of any created
     /// attribute, or an `Attribute`.
-    pub fn buffer(&self, attribute: &Bound<'_, PyAny>) -> PyResult<Buffer> {
-        let attr_entity = self.resolve_attribute(attribute)?;
-        let buf = particles_ensure_attribute(self.entity, attr_entity)
+    pub fn buffer(slf: &Bound<'_, Self>, attribute: &Bound<'_, PyAny>) -> PyResult<Buffer> {
+        let this = slf.borrow();
+        let attr_entity = this.resolve_attribute(attribute)?;
+        let buf = particles_ensure_attribute(this.entity, attr_entity)
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
         let (_, fmt) = geometry_attribute_info(attr_entity)
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
@@ -912,25 +933,28 @@ impl Particles {
             AttributeFormat::Float3 => shader_value::ShaderValue::Float3([0.0; 3]),
             AttributeFormat::Float4 => shader_value::ShaderValue::Float4([0.0; 4]),
         };
-        Ok(Buffer::from_entity(buf, Some(element_type)))
+        Ok(
+            Buffer::from_entity(buf, Some(element_type))
+                .with_owner(slf.clone().into_any().unbind()),
+        )
     }
 
-    pub fn index_buffer(&self, index_count: u32) -> PyResult<Buffer> {
-        let entity = particles_set_connectivity(self.entity, index_count)
+    pub fn index_buffer(slf: &Bound<'_, Self>, index_count: u32) -> PyResult<Buffer> {
+        let entity = particles_set_connectivity(slf.borrow().entity, index_count)
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
-        Ok(Buffer::from_entity(
-            entity,
-            Some(shader_value::ShaderValue::UInt(0)),
-        ))
+        Ok(
+            Buffer::from_entity(entity, Some(shader_value::ShaderValue::UInt(0)))
+                .with_owner(slf.clone().into_any().unbind()),
+        )
     }
 
-    pub fn draw_args(&self) -> PyResult<Buffer> {
-        let entity = particles_connectivity_indirect(self.entity)
+    pub fn draw_args(slf: &Bound<'_, Self>) -> PyResult<Buffer> {
+        let entity = particles_connectivity_indirect(slf.borrow().entity)
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
-        Ok(Buffer::from_entity(
-            entity,
-            Some(shader_value::ShaderValue::UInt(0)),
-        ))
+        Ok(
+            Buffer::from_entity(entity, Some(shader_value::ShaderValue::UInt(0)))
+                .with_owner(slf.clone().into_any().unbind()),
+        )
     }
 
     pub fn reset_indices(&self) -> PyResult<()> {
@@ -977,19 +1001,20 @@ impl Particles {
         for (key, value) in kwargs.iter() {
             let name: String = key.extract()?;
             let attr_entity = self.resolve_attribute(&key)?;
+            particles_ensure_attribute(self.entity, attr_entity)
+                .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
             let (_, fmt) = geometry_attribute_info(attr_entity)
                 .map_err(|e| PyRuntimeError::new_err(format!("{e}")))?;
             let fmt = AttributeFormat::from_inner(fmt);
-            let floats: Vec<f32> = value.extract()?;
+            let bytes = emit_bytes(&name, &value)?;
             let expected = (n as usize) * fmt.float_count();
-            if floats.len() != expected {
+            if bytes.len() != expected * 4 {
                 return Err(PyRuntimeError::new_err(format!(
                     "attribute '{name}': expected {expected} floats ({} per particle × {n}), got {}",
                     fmt.float_count(),
-                    floats.len(),
+                    bytes.len() / 4,
                 )));
             }
-            let bytes: Vec<u8> = floats.iter().flat_map(|f| f.to_le_bytes()).collect();
             data.push((attr_entity, bytes));
         }
         particles_emit(self.entity, n, data).map_err(|e| PyRuntimeError::new_err(format!("{e}")))

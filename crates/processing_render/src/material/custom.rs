@@ -72,7 +72,7 @@ fn specialize(
     // the first argument is bevy's `MaterialPipeline`; the material key rides in the pipeline key
     let key: CustomMaterialKey = pipeline_key.material_key.to_key();
     crate::material::apply_pipeline_state(descriptor, key.blend_state, key.depth_write);
-    // two-sided unless asked otherwise, like every other mewnala material
+    // two-sided unless asked otherwise, like every other material
     descriptor.primitive.cull_mode = match key.double_sided {
         Some(false) => Some(Face::Back),
         _ => None,
@@ -139,6 +139,57 @@ impl wesl::Resolver for ProcessingResolver<'_> {
             )),
         }
     }
+}
+
+// wgsl-analyzer rejects lygia's own `unstable_2025` edition.
+const PACKAGE_MANIFEST: &str = "edition = \"2026_pre\"\nroot = \".\"\n";
+
+/// A built-in WESL package as source files, for editor tooling to resolve imports against.
+pub struct ShaderPackage {
+    pub name: &'static str,
+    /// `(path relative to the package root, contents)`
+    pub files: Vec<(String, &'static str)>,
+}
+
+fn package_files(pkg: &'static wesl::CodegenPkg, extra: &[(&str, &'static str)]) -> ShaderPackage {
+    fn walk(
+        module: &'static wesl::CodegenModule,
+        dir: &str,
+        files: &mut Vec<(String, &'static str)>,
+    ) {
+        for sub in module.submodules {
+            // a directory module has no source of its own
+            if !sub.source.is_empty() || sub.submodules.is_empty() {
+                files.push((format!("{dir}{}.wesl", sub.name), sub.source));
+            }
+            walk(sub, &format!("{dir}{}/", sub.name), files);
+        }
+    }
+    let mut files = vec![
+        ("wesl.toml".to_string(), PACKAGE_MANIFEST),
+        ("package.wesl".to_string(), pkg.root.source),
+    ];
+    files.extend(
+        extra
+            .iter()
+            .map(|(path, contents)| (path.to_string(), *contents)),
+    );
+    walk(pkg.root, "", &mut files);
+    ShaderPackage {
+        name: pkg.root.name,
+        files,
+    }
+}
+
+/// The WESL packages every shader can import, exactly as the runtime resolves them.
+pub fn shader_packages() -> Vec<ShaderPackage> {
+    vec![
+        package_files(&processing::PACKAGE, &[]),
+        package_files(
+            &lygia::PACKAGE,
+            &[("LICENSE.md", include_str!("../../../../lygia/LICENSE.md"))],
+        ),
+    ]
 }
 
 pub(crate) fn compile_shader(source: &str) -> Result<(String, naga::Module)> {
@@ -510,6 +561,7 @@ pub(crate) fn shader_value_to_reflect(value: &ShaderValue) -> Result<Box<dyn Par
         ShaderValue::UInt3(v) => Box::new(UVec3::from_array(*v)),
         ShaderValue::UInt4(v) => Box::new(UVec4::from_array(*v)),
         ShaderValue::Mat4(v) => Box::new(Mat4::from_cols_array(v)),
+        ShaderValue::Color(c) => Box::new(Vec4::from_array(c.to_linear().to_f32_array())),
         ShaderValue::Texture(_)
         | ShaderValue::Buffer(_)
         | ShaderValue::MeshAttribute(..)
